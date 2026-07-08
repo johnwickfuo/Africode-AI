@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\PipelineRun;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -10,16 +11,12 @@ class HandleInertiaRequests extends Middleware
     /**
      * The root template that's loaded on the first page visit.
      *
-     * @see https://inertiajs.com/server-side-setup#root-template
-     *
      * @var string
      */
     protected $rootView = 'app';
 
     /**
      * Determines the current asset version.
-     *
-     * @see https://inertiajs.com/asset-versioning
      */
     public function version(Request $request): ?string
     {
@@ -29,15 +26,28 @@ class HandleInertiaRequests extends Middleware
     /**
      * Define the props that are shared by default.
      *
-     * @see https://inertiajs.com/shared-data
-     *
      * @return array<string, mixed>
      */
     public function share(Request $request): array
     {
         return [
             ...parent::share($request),
-            //
+            'appName' => config('app.name'),
+            // Data-freshness stamps for the footer (spec 3.3: the app keeps
+            // serving last-good data, so the UI always says how old it is).
+            'pipeline' => fn () => [
+                'fixtures_as_of' => $this->lastSuccess('SyncFixturesJob'),
+                'stats_as_of' => $this->lastSuccess('ImportFbrefDataJob'),
+                'predictions_as_of' => $this->lastSuccess('GeneratePredictionsJob'),
+            ],
         ];
+    }
+
+    private function lastSuccess(string $jobName): ?string
+    {
+        return PipelineRun::lastSuccessfulRun($jobName)
+            ?->finished_at
+            ?->timezone(config('africode.display_timezone'))
+            ->isoFormat('D MMM, HH:mm');
     }
 }

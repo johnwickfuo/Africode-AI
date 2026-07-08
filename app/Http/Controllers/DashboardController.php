@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Fixture;
 use App\Models\League;
-use App\Models\PipelineRun;
+use App\Models\Prediction;
 use App\Services\FootballData\FixtureSyncService;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -12,9 +12,8 @@ use Inertia\Response;
 class DashboardController extends Controller
 {
     /**
-     * Upcoming fixtures for the next 14 days, grouped client-side by date.
-     * Reads only from MySQL — computation and API calls happen in the
-     * nightly pipeline, never here.
+     * Upcoming fixtures for the next 14 days with each fixture's latest
+     * Best Bet. Reads only from the database — no computation here.
      */
     public function __invoke(): Response
     {
@@ -26,21 +25,32 @@ class DashboardController extends Controller
                 'league:id,code,name',
                 'homeTeam:id,name,short_name,logo_url',
                 'awayTeam:id,name,short_name,logo_url',
+                'predictions' => fn ($query) => $query->orderByDesc('generated_at'),
             ])
             ->get()
-            ->map(fn (Fixture $fixture) => [
-                'id' => $fixture->id,
-                'league' => [
-                    'code' => $fixture->league->code,
-                    'name' => $fixture->league->name,
-                ],
-                'home_team' => $fixture->homeTeam->only(['name', 'short_name', 'logo_url']),
-                'away_team' => $fixture->awayTeam->only(['name', 'short_name', 'logo_url']),
-                'kickoff_date' => $fixture->kickoff_utc->timezone($displayTz)->isoFormat('dddd D MMMM'),
-                'kickoff_time' => $fixture->kickoff_utc->timezone($displayTz)->format('H:i'),
-                'matchday' => $fixture->matchday,
-                'is_derby' => $fixture->is_derby,
-            ]);
+            ->map(function (Fixture $fixture) use ($displayTz) {
+                /** @var Prediction|null $prediction */
+                $prediction = $fixture->predictions->first();
+
+                return [
+                    'id' => $fixture->id,
+                    'league' => [
+                        'code' => $fixture->league->code,
+                        'name' => $fixture->league->name,
+                    ],
+                    'home_team' => $fixture->homeTeam->only(['name', 'short_name', 'logo_url']),
+                    'away_team' => $fixture->awayTeam->only(['name', 'short_name', 'logo_url']),
+                    'kickoff_date' => $fixture->kickoff_utc->timezone($displayTz)->isoFormat('dddd D MMMM'),
+                    'kickoff_time' => $fixture->kickoff_utc->timezone($displayTz)->format('H:i'),
+                    'matchday' => $fixture->matchday,
+                    'is_derby' => $fixture->is_derby,
+                    'best_bet' => $prediction === null ? null : [
+                        'headline' => $prediction->headline_text,
+                        'probability' => (float) $prediction->best_bet_probability,
+                        'market' => $prediction->best_bet_market,
+                    ],
+                ];
+            });
 
         return Inertia::render('Dashboard', [
             'leagues' => League::query()
@@ -48,8 +58,6 @@ class DashboardController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'code', 'name', 'country']),
             'fixtures' => $fixtures,
-            'lastSyncedAt' => PipelineRun::lastSuccessfulRun('SyncFixturesJob')
-                ?->finished_at?->timezone($displayTz)->isoFormat('D MMM YYYY, HH:mm'),
         ]);
     }
 }

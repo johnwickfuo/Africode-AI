@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
+import AppLayout from '../Layouts/AppLayout.vue';
 
 const props = defineProps({
     leagues: {
@@ -10,10 +11,6 @@ const props = defineProps({
     fixtures: {
         type: Array,
         default: () => [],
-    },
-    lastSyncedAt: {
-        type: String,
-        default: null,
     },
 });
 
@@ -35,32 +32,25 @@ const fixturesByDate = computed(() => {
     }
     return [...groups.entries()].map(([date, fixtures]) => ({ date, fixtures }));
 });
+
+const confidence = (probability) => {
+    if (probability >= 0.78) return { label: 'High', class: 'bg-green-500/15 text-green-400' };
+    if (probability >= 0.7) return { label: 'Solid', class: 'bg-green-500/10 text-green-500' };
+    return { label: 'Lean', class: 'bg-slate-700/40 text-slate-300' };
+};
 </script>
 
 <template>
     <Head title="Fixtures" />
 
-    <div class="mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-6">
-        <header class="mb-6 flex items-center gap-3">
-            <span
-                class="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500 font-black text-slate-950"
-            >
-                A
-            </span>
-            <h1 class="text-xl font-bold tracking-tight">
-                Africode <span class="text-green-400">Football AI</span>
-            </h1>
-        </header>
-
+    <AppLayout>
         <nav class="mb-6 flex flex-wrap gap-2" aria-label="League filter">
             <button
                 type="button"
                 class="rounded-full px-3 py-1.5 text-sm font-semibold transition"
-                :class="
-                    activeLeague === null
-                        ? 'bg-green-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                "
+                :class="activeLeague === null
+                    ? 'bg-green-500 text-slate-950'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
                 @click="activeLeague = null"
             >
                 All
@@ -70,35 +60,32 @@ const fixturesByDate = computed(() => {
                 :key="league.id"
                 type="button"
                 class="rounded-full px-3 py-1.5 text-sm font-semibold transition"
-                :class="
-                    activeLeague === league.code
-                        ? 'bg-green-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                "
+                :class="activeLeague === league.code
+                    ? 'bg-green-500 text-slate-950'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
                 @click="activeLeague = league.code"
             >
                 {{ league.name }}
             </button>
         </nav>
 
-        <main class="flex-1">
-            <template v-if="fixturesByDate.length">
-                <section v-for="group in fixturesByDate" :key="group.date" class="mb-8">
-                    <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
-                        {{ group.date }}
-                    </h2>
-                    <ul class="space-y-2">
-                        <li
-                            v-for="fixture in group.fixtures"
-                            :key="fixture.id"
-                            class="rounded-xl border border-slate-800 bg-slate-900 p-4"
+        <template v-if="fixturesByDate.length">
+            <section v-for="group in fixturesByDate" :key="group.date" class="mb-8">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                    {{ group.date }}
+                </h2>
+                <ul class="space-y-2">
+                    <li v-for="fixture in group.fixtures" :key="fixture.id">
+                        <Link
+                            :href="`/match/${fixture.id}`"
+                            class="block rounded-xl border border-slate-800 bg-slate-900 p-4 transition hover:border-slate-600"
                         >
                             <div class="mb-2 flex items-center justify-between text-xs text-slate-400">
                                 <span class="flex items-center gap-2">
                                     <span class="rounded bg-slate-800 px-2 py-0.5 font-bold text-green-400">
                                         {{ fixture.league.code }}
                                     </span>
-                                    <span v-if="fixture.matchday">Matchday {{ fixture.matchday }}</span>
+                                    <span v-if="fixture.matchday">MD {{ fixture.matchday }}</span>
                                     <span
                                         v-if="fixture.is_derby"
                                         class="rounded bg-amber-500/15 px-2 py-0.5 font-bold text-amber-400"
@@ -110,34 +97,48 @@ const fixturesByDate = computed(() => {
                                     {{ fixture.kickoff_time }}
                                 </span>
                             </div>
+
                             <div class="flex items-center justify-between gap-3 font-semibold">
                                 <span class="flex-1 truncate text-right">{{ fixture.home_team.name }}</span>
                                 <span class="text-xs font-bold text-slate-500">vs</span>
                                 <span class="flex-1 truncate">{{ fixture.away_team.name }}</span>
                             </div>
-                        </li>
-                    </ul>
-                </section>
-            </template>
 
-            <div
-                v-else
-                class="rounded-xl border border-dashed border-slate-700 p-8 text-center text-slate-400"
-            >
-                <p class="font-semibold">No upcoming fixtures.</p>
-                <p class="mt-2 text-sm">
-                    Run
-                    <code class="rounded bg-slate-800 px-1.5 py-0.5 text-green-400">
-                        php artisan africode:sync-fixtures
-                    </code>
-                    to pull fixtures from football-data.org.
-                </p>
-            </div>
-        </main>
+                            <div
+                                v-if="fixture.best_bet"
+                                class="mt-3 flex items-center justify-between gap-2 rounded-lg bg-slate-950/60 px-3 py-2"
+                            >
+                                <span class="truncate text-sm font-semibold text-green-400">
+                                    ★ {{ fixture.best_bet.headline }}
+                                </span>
+                                <span
+                                    class="shrink-0 rounded px-2 py-0.5 text-xs font-bold"
+                                    :class="confidence(fixture.best_bet.probability).class"
+                                >
+                                    {{ confidence(fixture.best_bet.probability).label }}
+                                </span>
+                            </div>
+                            <p v-else class="mt-3 text-xs text-slate-500">
+                                Prediction pending — generated daily at 06:00.
+                            </p>
+                        </Link>
+                    </li>
+                </ul>
+            </section>
+        </template>
 
-        <footer class="mt-10 border-t border-slate-800 pt-4 text-xs text-slate-500">
-            <p v-if="lastSyncedAt">Fixtures data as of {{ lastSyncedAt }} (Africa/Lagos).</p>
-            <p v-else>Fixtures have not been synced yet.</p>
-        </footer>
-    </div>
+        <div
+            v-else
+            class="rounded-xl border border-dashed border-slate-700 p-8 text-center text-slate-400"
+        >
+            <p class="font-semibold">No upcoming fixtures.</p>
+            <p class="mt-2 text-sm">
+                Run
+                <code class="rounded bg-slate-800 px-1.5 py-0.5 text-green-400">
+                    php artisan africode:sync-fixtures
+                </code>
+                to pull fixtures from football-data.org.
+            </p>
+        </div>
+    </AppLayout>
 </template>
