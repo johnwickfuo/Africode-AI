@@ -1,11 +1,39 @@
 <script setup>
+import { computed, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 
-defineProps({
+const props = defineProps({
     leagues: {
         type: Array,
         default: () => [],
     },
+    fixtures: {
+        type: Array,
+        default: () => [],
+    },
+    lastSyncedAt: {
+        type: String,
+        default: null,
+    },
+});
+
+const activeLeague = ref(null);
+
+const filteredFixtures = computed(() =>
+    activeLeague.value
+        ? props.fixtures.filter((fixture) => fixture.league.code === activeLeague.value)
+        : props.fixtures,
+);
+
+const fixturesByDate = computed(() => {
+    const groups = new Map();
+    for (const fixture of filteredFixtures.value) {
+        if (!groups.has(fixture.kickoff_date)) {
+            groups.set(fixture.kickoff_date, []);
+        }
+        groups.get(fixture.kickoff_date).push(fixture);
+    }
+    return [...groups.entries()].map(([date, fixtures]) => ({ date, fixtures }));
 });
 </script>
 
@@ -13,7 +41,7 @@ defineProps({
     <Head title="Fixtures" />
 
     <div class="mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-6">
-        <header class="mb-8 flex items-center gap-3">
+        <header class="mb-6 flex items-center gap-3">
             <span
                 class="flex h-9 w-9 items-center justify-center rounded-lg bg-green-500 font-black text-slate-950"
             >
@@ -24,37 +52,92 @@ defineProps({
             </h1>
         </header>
 
+        <nav class="mb-6 flex flex-wrap gap-2" aria-label="League filter">
+            <button
+                type="button"
+                class="rounded-full px-3 py-1.5 text-sm font-semibold transition"
+                :class="
+                    activeLeague === null
+                        ? 'bg-green-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                "
+                @click="activeLeague = null"
+            >
+                All
+            </button>
+            <button
+                v-for="league in leagues"
+                :key="league.id"
+                type="button"
+                class="rounded-full px-3 py-1.5 text-sm font-semibold transition"
+                :class="
+                    activeLeague === league.code
+                        ? 'bg-green-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                "
+                @click="activeLeague = league.code"
+            >
+                {{ league.name }}
+            </button>
+        </nav>
+
         <main class="flex-1">
-            <h2 class="mb-4 text-sm font-semibold uppercase tracking-widest text-slate-400">
-                Tracked leagues
-            </h2>
-            <ul class="grid gap-3 sm:grid-cols-2">
-                <li
-                    v-for="league in leagues"
-                    :key="league.id"
-                    class="rounded-xl border border-slate-800 bg-slate-900 p-4"
-                >
-                    <div class="flex items-center justify-between">
-                        <span class="font-semibold">{{ league.name }}</span>
-                        <span
-                            class="rounded bg-slate-800 px-2 py-0.5 text-xs font-bold text-green-400"
+            <template v-if="fixturesByDate.length">
+                <section v-for="group in fixturesByDate" :key="group.date" class="mb-8">
+                    <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                        {{ group.date }}
+                    </h2>
+                    <ul class="space-y-2">
+                        <li
+                            v-for="fixture in group.fixtures"
+                            :key="fixture.id"
+                            class="rounded-xl border border-slate-800 bg-slate-900 p-4"
                         >
-                            {{ league.code }}
-                        </span>
-                    </div>
-                    <p class="mt-1 text-sm text-slate-400">
-                        {{ league.country }} · {{ league.teams_count }} teams
-                    </p>
-                </li>
-            </ul>
-            <p v-if="!leagues.length" class="text-slate-400">
-                No leagues seeded yet. Run
-                <code class="rounded bg-slate-800 px-1.5 py-0.5 text-green-400">php artisan db:seed</code>.
-            </p>
+                            <div class="mb-2 flex items-center justify-between text-xs text-slate-400">
+                                <span class="flex items-center gap-2">
+                                    <span class="rounded bg-slate-800 px-2 py-0.5 font-bold text-green-400">
+                                        {{ fixture.league.code }}
+                                    </span>
+                                    <span v-if="fixture.matchday">Matchday {{ fixture.matchday }}</span>
+                                    <span
+                                        v-if="fixture.is_derby"
+                                        class="rounded bg-amber-500/15 px-2 py-0.5 font-bold text-amber-400"
+                                    >
+                                        DERBY
+                                    </span>
+                                </span>
+                                <span class="font-mono font-semibold text-slate-300">
+                                    {{ fixture.kickoff_time }}
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 font-semibold">
+                                <span class="flex-1 truncate text-right">{{ fixture.home_team.name }}</span>
+                                <span class="text-xs font-bold text-slate-500">vs</span>
+                                <span class="flex-1 truncate">{{ fixture.away_team.name }}</span>
+                            </div>
+                        </li>
+                    </ul>
+                </section>
+            </template>
+
+            <div
+                v-else
+                class="rounded-xl border border-dashed border-slate-700 p-8 text-center text-slate-400"
+            >
+                <p class="font-semibold">No upcoming fixtures.</p>
+                <p class="mt-2 text-sm">
+                    Run
+                    <code class="rounded bg-slate-800 px-1.5 py-0.5 text-green-400">
+                        php artisan africode:sync-fixtures
+                    </code>
+                    to pull fixtures from football-data.org.
+                </p>
+            </div>
         </main>
 
         <footer class="mt-10 border-t border-slate-800 pt-4 text-xs text-slate-500">
-            Africode Football AI — predictions read from cached data only.
+            <p v-if="lastSyncedAt">Fixtures data as of {{ lastSyncedAt }} (Africa/Lagos).</p>
+            <p v-else>Fixtures have not been synced yet.</p>
         </footer>
     </div>
 </template>
