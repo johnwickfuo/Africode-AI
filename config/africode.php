@@ -25,6 +25,18 @@ return [
     // Python sidecar (FBref scraping + prediction models).
     'python_bin' => env('PYTHON_BIN', 'python3'),
 
+    // FBref via soccerdata — the statistical engine (corners, cards, shots, xG).
+    'fbref' => [
+        // Tracked seasons in soccerdata key format.
+        'seasons' => ['2324', '2425', '2526'],
+        'script_path' => base_path('scripts/fbref_scrape.py'),
+        'output_path' => storage_path('app/pipeline/fbref_latest.json'),
+        // First full scrape of 3 seasons takes hours (polite throttling);
+        // run it via `africode:scrape-fbref --now`. Nightly incremental runs
+        // only fetch new pages and fit comfortably in this cap.
+        'scrape_timeout_seconds' => 7200,
+    ],
+
     // Best Bet eligibility window (spec section 7.5).
     'best_bet' => [
         'min_prob' => (float) env('BEST_BET_MIN_PROB', 0.62),
