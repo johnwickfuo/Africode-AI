@@ -43,6 +43,15 @@ return [
         'max_prob' => (float) env('BEST_BET_MAX_PROB', 0.92),
     ],
 
+    // Prediction generation (scripts/predict.py).
+    'predict' => [
+        'script_path' => base_path('scripts/predict.py'),
+        'input_path' => storage_path('app/pipeline/predict_input.json'),
+        'output_path' => storage_path('app/pipeline/predictions_latest.json'),
+        'days_ahead' => 7,
+        'timeout_seconds' => 600,
+    ],
+
     // Optional single password protecting the whole app (Phase 1, no auth).
     'access_password' => env('APP_ACCESS_PASSWORD'),
 
