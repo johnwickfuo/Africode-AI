@@ -4,6 +4,7 @@ use App\Jobs\GeneratePredictionsJob;
 use App\Jobs\ImportFbrefDataJob;
 use App\Jobs\RecomputeProfilesJob;
 use App\Jobs\ScrapeFbrefJob;
+use App\Jobs\SettlePredictionsJob;
 use App\Jobs\SyncFixturesJob;
 use Illuminate\Support\Facades\Schedule;
 
@@ -23,6 +24,10 @@ Schedule::job(new SyncFixturesJob)
 
 Schedule::job(new RecomputeProfilesJob)
     ->dailyAt('03:15')
+    ->timezone('Africa/Lagos');
+
+Schedule::job(new SettlePredictionsJob)
+    ->dailyAt('03:30')
     ->timezone('Africa/Lagos');
 
 Schedule::job(new GeneratePredictionsJob)
