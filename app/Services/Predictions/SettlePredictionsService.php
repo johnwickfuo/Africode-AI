@@ -2,6 +2,7 @@
 
 namespace App\Services\Predictions;
 
+use App\Models\Accumulator;
 use App\Models\Fixture;
 use App\Models\MatchStat;
 use App\Models\ModelAccuracy;
@@ -66,10 +67,44 @@ class SettlePredictionsService
         }
 
         $summary['accuracy_rows'] = $this->rebuildModelAccuracy();
+        $summary['accumulators_settled'] = $this->settleAccumulators();
 
         Log::info('Prediction settlement finished', $summary);
 
         return $summary;
+    }
+
+    /**
+     * Settle accumulators from their legs' outcomes: one lost leg loses the
+     * acca; a void leg (postponed fixture) drops out of the ticket, bookie
+     * style; all legs settled and none lost wins it (or voids it when every
+     * leg voided). Still-pending legs leave the acca pending.
+     */
+    private function settleAccumulators(): int
+    {
+        $settled = 0;
+
+        $pending = Accumulator::where('outcome', Accumulator::OUTCOME_PENDING)
+            ->with('legs.predictionMarket:id,outcome')
+            ->get();
+
+        foreach ($pending as $accumulator) {
+            $outcomes = $accumulator->legs->map(fn ($leg) => $leg->predictionMarket->outcome);
+
+            $result = match (true) {
+                $outcomes->contains(PredictionMarket::OUTCOME_LOST) => Accumulator::OUTCOME_LOST,
+                $outcomes->contains(PredictionMarket::OUTCOME_PENDING) => null,
+                $outcomes->contains(PredictionMarket::OUTCOME_WON) => Accumulator::OUTCOME_WON,
+                default => Accumulator::OUTCOME_VOID, // every leg voided
+            };
+
+            if ($result !== null) {
+                $accumulator->update(['outcome' => $result, 'settled_at' => now()]);
+                $settled++;
+            }
+        }
+
+        return $settled;
     }
 
     /**

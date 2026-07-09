@@ -17,6 +17,77 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `accumulator_legs`
+--
+
+DROP TABLE IF EXISTS `accumulator_legs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `accumulator_legs` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `accumulator_id` bigint(20) unsigned NOT NULL,
+  `prediction_market_id` bigint(20) unsigned NOT NULL,
+  `fixture_id` bigint(20) unsigned NOT NULL,
+  `market` varchar(32) NOT NULL,
+  `line` decimal(4,1) DEFAULT NULL,
+  `direction` varchar(8) NOT NULL,
+  `probability` decimal(5,4) NOT NULL,
+  `odds` decimal(6,3) NOT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `accumulator_legs_prediction_market_id_foreign` (`prediction_market_id`),
+  KEY `accumulator_legs_fixture_id_foreign` (`fixture_id`),
+  KEY `accumulator_legs_accumulator_id_index` (`accumulator_id`),
+  CONSTRAINT `accumulator_legs_accumulator_id_foreign` FOREIGN KEY (`accumulator_id`) REFERENCES `accumulators` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `accumulator_legs_fixture_id_foreign` FOREIGN KEY (`fixture_id`) REFERENCES `fixtures` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `accumulator_legs_prediction_market_id_foreign` FOREIGN KEY (`prediction_market_id`) REFERENCES `prediction_markets` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `accumulator_legs`
+--
+
+LOCK TABLES `accumulator_legs` WRITE;
+/*!40000 ALTER TABLE `accumulator_legs` DISABLE KEYS */;
+/*!40000 ALTER TABLE `accumulator_legs` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `accumulators`
+--
+
+DROP TABLE IF EXISTS `accumulators`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `accumulators` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `generated_at` datetime NOT NULL,
+  `target_odds` int(10) unsigned NOT NULL,
+  `combined_odds` decimal(10,2) NOT NULL,
+  `combined_probability` decimal(10,8) NOT NULL,
+  `legs_count` tinyint(3) unsigned NOT NULL,
+  `outcome` varchar(8) NOT NULL DEFAULT 'pending',
+  `settled_at` datetime DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `accumulators_generated_at_target_odds_index` (`generated_at`,`target_odds`),
+  KEY `accumulators_outcome_index` (`outcome`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `accumulators`
+--
+
+LOCK TABLES `accumulators` WRITE;
+/*!40000 ALTER TABLE `accumulators` DISABLE KEYS */;
+/*!40000 ALTER TABLE `accumulators` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `cache`
 --
 
@@ -264,11 +335,11 @@ CREATE TABLE `leagues` (
 LOCK TABLES `leagues` WRITE;
 /*!40000 ALTER TABLE `leagues` DISABLE KEYS */;
 INSERT INTO `leagues` VALUES
-(1,'PL','Premier League','England','9',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(2,'PD','La Liga','Spain','12',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(3,'SA','Serie A','Italy','11',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(4,'BL1','Bundesliga','Germany','20',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(5,'FL1','Ligue 1','France','13',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09');
+(1,'PL','Premier League','England','9',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(2,'PD','La Liga','Spain','12',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(3,'SA','Serie A','Italy','11',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(4,'BL1','Bundesliga','Germany','20',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(5,'FL1','Ligue 1','France','13',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55');
 /*!40000 ALTER TABLE `leagues` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -330,7 +401,7 @@ CREATE TABLE `migrations` (
   `migration` varchar(255) NOT NULL,
   `batch` int(11) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -358,7 +429,8 @@ INSERT INTO `migrations` VALUES
 (16,'2026_07_09_000002_add_fbref_game_id_to_fixtures',1),
 (17,'2026_07_09_000003_create_players_table',1),
 (18,'2026_07_09_000004_create_player_match_stats_table',1),
-(19,'2026_07_09_000005_create_player_scrape_progress_table',1);
+(19,'2026_07_09_000005_create_player_scrape_progress_table',1),
+(20,'2026_07_10_000001_create_accumulators_tables',1);
 /*!40000 ALTER TABLE `migrations` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -688,46 +760,46 @@ CREATE TABLE `rivalries` (
 LOCK TABLES `rivalries` WRITE;
 /*!40000 ALTER TABLE `rivalries` DISABLE KEYS */;
 INSERT INTO `rivalries` VALUES
-(1,1,1,18,'North London Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(2,1,12,9,'Merseyside Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(3,1,12,14,'North-West Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(4,1,13,14,'Manchester Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(5,1,15,17,'Tyne-Wear Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(6,1,11,14,'Roses Rivalry','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(7,1,8,5,'M23 Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(8,1,7,1,'London Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(9,1,7,18,'London Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(10,1,19,18,'London Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(11,1,7,10,'West London Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(12,1,10,4,'West London Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(13,2,35,24,'El Clásico','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(14,2,35,23,'Madrid Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(15,2,34,23,'Madrid Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(16,2,34,35,'Madrid Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(17,2,38,25,'Seville Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(18,2,22,37,'Basque Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(19,2,24,28,'Barcelona Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(20,2,39,31,'Valencia Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(21,2,39,40,'Comunitat Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(22,3,49,53,'Derby della Madonnina','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(23,3,57,51,'Derby della Capitale','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(24,3,50,59,'Derby della Mole','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(25,3,49,50,'Derby d\'Italia','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(26,3,57,54,'Derby del Sole','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(27,3,42,46,'Derby dell\'Appennino','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(28,4,63,64,'Der Klassiker','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(29,4,68,74,'Hamburg Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(30,4,68,77,'Nordderby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(31,4,71,65,'Rheinderby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(32,4,71,62,'Rhein Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(33,4,66,72,'Rhein-Main Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(34,5,93,87,'Le Classique','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(35,5,86,87,'Choc des Olympiques','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(36,5,83,84,'Derby du Nord','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(37,5,90,94,'Derby de l\'Ouest','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(38,5,91,89,'Derby de la Côte d\'Azur','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(39,5,93,92,'Paris Derby','2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(40,5,81,94,'Derby Breton','2026-07-09 13:57:09','2026-07-09 13:57:09');
+(1,1,1,18,'North London Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(2,1,12,9,'Merseyside Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(3,1,12,14,'North-West Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(4,1,13,14,'Manchester Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(5,1,15,17,'Tyne-Wear Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(6,1,11,14,'Roses Rivalry','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(7,1,8,5,'M23 Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(8,1,7,1,'London Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(9,1,7,18,'London Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(10,1,19,18,'London Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(11,1,7,10,'West London Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(12,1,10,4,'West London Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(13,2,35,24,'El Clásico','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(14,2,35,23,'Madrid Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(15,2,34,23,'Madrid Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(16,2,34,35,'Madrid Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(17,2,38,25,'Seville Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(18,2,22,37,'Basque Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(19,2,24,28,'Barcelona Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(20,2,39,31,'Valencia Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(21,2,39,40,'Comunitat Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(22,3,49,53,'Derby della Madonnina','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(23,3,57,51,'Derby della Capitale','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(24,3,50,59,'Derby della Mole','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(25,3,49,50,'Derby d\'Italia','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(26,3,57,54,'Derby del Sole','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(27,3,42,46,'Derby dell\'Appennino','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(28,4,63,64,'Der Klassiker','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(29,4,68,74,'Hamburg Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(30,4,68,77,'Nordderby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(31,4,71,65,'Rheinderby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(32,4,71,62,'Rhein Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(33,4,66,72,'Rhein-Main Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(34,5,93,87,'Le Classique','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(35,5,86,87,'Choc des Olympiques','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(36,5,83,84,'Derby du Nord','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(37,5,90,94,'Derby de l\'Ouest','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(38,5,91,89,'Derby de la Côte d\'Azur','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(39,5,93,92,'Paris Derby','2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(40,5,81,94,'Derby Breton','2026-07-09 19:21:55','2026-07-09 19:21:55');
 /*!40000 ALTER TABLE `rivalries` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -834,102 +906,102 @@ CREATE TABLE `teams` (
 LOCK TABLES `teams` WRITE;
 /*!40000 ALTER TABLE `teams` DISABLE KEYS */;
 INSERT INTO `teams` VALUES
-(1,1,'Arsenal','Arsenal',NULL,NULL,'ARS',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(2,1,'Aston Villa','Aston Villa',NULL,NULL,'AVL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(3,1,'AFC Bournemouth','Bournemouth',NULL,NULL,'BOU',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(4,1,'Brentford','Brentford',NULL,NULL,'BRE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(5,1,'Brighton & Hove Albion','Brighton',NULL,NULL,'BHA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(6,1,'Burnley','Burnley',NULL,NULL,'BUR',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(7,1,'Chelsea','Chelsea',NULL,NULL,'CHE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(8,1,'Crystal Palace','Crystal Palace',NULL,NULL,'CRY',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(9,1,'Everton','Everton',NULL,NULL,'EVE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(10,1,'Fulham','Fulham',NULL,NULL,'FUL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(11,1,'Leeds United','Leeds United',NULL,NULL,'LEE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(12,1,'Liverpool','Liverpool',NULL,NULL,'LIV',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(13,1,'Manchester City','Manchester City',NULL,NULL,'MCI',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(14,1,'Manchester United','Manchester Utd',NULL,NULL,'MUN',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(15,1,'Newcastle United','Newcastle Utd',NULL,NULL,'NEW',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(16,1,'Nottingham Forest','Nott\'ham Forest',NULL,NULL,'NFO',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(17,1,'Sunderland','Sunderland',NULL,NULL,'SUN',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(18,1,'Tottenham Hotspur','Tottenham',NULL,NULL,'TOT',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(19,1,'West Ham United','West Ham',NULL,NULL,'WHU',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(20,1,'Wolverhampton Wanderers','Wolves',NULL,NULL,'WOL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(21,2,'Deportivo Alavés','Alavés',NULL,NULL,'ALA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(22,2,'Athletic Club','Athletic Club',NULL,NULL,'ATH',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(23,2,'Atlético Madrid','Atlético Madrid',NULL,NULL,'ATM',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(24,2,'FC Barcelona','Barcelona',NULL,NULL,'BAR',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(25,2,'Real Betis','Betis',NULL,NULL,'BET',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(26,2,'Celta Vigo','Celta Vigo',NULL,NULL,'CEL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(27,2,'Elche','Elche',NULL,NULL,'ELC',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(28,2,'Espanyol','Espanyol',NULL,NULL,'ESP',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(29,2,'Getafe','Getafe',NULL,NULL,'GET',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(30,2,'Girona','Girona',NULL,NULL,'GIR',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(31,2,'Levante','Levante',NULL,NULL,'LEV',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(32,2,'RCD Mallorca','Mallorca',NULL,NULL,'MLL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(33,2,'Osasuna','Osasuna',NULL,NULL,'OSA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(34,2,'Rayo Vallecano','Rayo Vallecano',NULL,NULL,'RAY',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(35,2,'Real Madrid','Real Madrid',NULL,NULL,'RMA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(36,2,'Real Oviedo','Oviedo',NULL,NULL,'OVI',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(37,2,'Real Sociedad','Real Sociedad',NULL,NULL,'RSO',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(38,2,'Sevilla','Sevilla',NULL,NULL,'SEV',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(39,2,'Valencia','Valencia',NULL,NULL,'VAL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(40,2,'Villarreal','Villarreal',NULL,NULL,'VIL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(41,3,'Atalanta','Atalanta',NULL,NULL,'ATA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(42,3,'Bologna','Bologna',NULL,NULL,'BOL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(43,3,'Cagliari','Cagliari',NULL,NULL,'CAG',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(44,3,'Como','Como',NULL,NULL,'COM',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(45,3,'Cremonese','Cremonese',NULL,NULL,'CRE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(46,3,'Fiorentina','Fiorentina',NULL,NULL,'FIO',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(47,3,'Genoa','Genoa',NULL,NULL,'GEN',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(48,3,'Hellas Verona','Hellas Verona',NULL,NULL,'VER',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(49,3,'Inter Milan','Inter',NULL,NULL,'INT',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(50,3,'Juventus','Juventus',NULL,NULL,'JUV',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(51,3,'Lazio','Lazio',NULL,NULL,'LAZ',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(52,3,'Lecce','Lecce',NULL,NULL,'LEC',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(53,3,'AC Milan','Milan',NULL,NULL,'MIL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(54,3,'Napoli','Napoli',NULL,NULL,'NAP',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(55,3,'Parma','Parma',NULL,NULL,'PAR',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(56,3,'Pisa','Pisa',NULL,NULL,'PIS',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(57,3,'AS Roma','Roma',NULL,NULL,'ROM',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(58,3,'Sassuolo','Sassuolo',NULL,NULL,'SAS',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(59,3,'Torino','Torino',NULL,NULL,'TOR',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(60,3,'Udinese','Udinese',NULL,NULL,'UDI',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(61,4,'FC Augsburg','Augsburg',NULL,NULL,'FCA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(62,4,'Bayer Leverkusen','Leverkusen',NULL,NULL,'B04',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(63,4,'Bayern Munich','Bayern Munich',NULL,NULL,'FCB',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(64,4,'Borussia Dortmund','Dortmund',NULL,NULL,'BVB',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(65,4,'Borussia Mönchengladbach','Gladbach',NULL,NULL,'BMG',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(66,4,'Eintracht Frankfurt','Eint Frankfurt',NULL,NULL,'SGE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(67,4,'SC Freiburg','Freiburg',NULL,NULL,'SCF',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(68,4,'Hamburger SV','Hamburger SV',NULL,NULL,'HSV',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(69,4,'1. FC Heidenheim','Heidenheim',NULL,NULL,'HDH',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(70,4,'TSG Hoffenheim','Hoffenheim',NULL,NULL,'TSG',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(71,4,'1. FC Köln','Köln',NULL,NULL,'KOE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(72,4,'Mainz 05','Mainz 05',NULL,NULL,'M05',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(73,4,'RB Leipzig','RB Leipzig',NULL,NULL,'RBL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(74,4,'FC St. Pauli','St. Pauli',NULL,NULL,'STP',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(75,4,'VfB Stuttgart','Stuttgart',NULL,NULL,'VFB',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(76,4,'Union Berlin','Union Berlin',NULL,NULL,'FCU',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(77,4,'Werder Bremen','Werder Bremen',NULL,NULL,'SVW',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(78,4,'VfL Wolfsburg','Wolfsburg',NULL,NULL,'WOB',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(79,5,'Angers SCO','Angers',NULL,NULL,'ANG',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(80,5,'AJ Auxerre','Auxerre',NULL,NULL,'AJA',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(81,5,'Stade Brestois','Brest',NULL,NULL,'BRE',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(82,5,'Le Havre','Le Havre',NULL,NULL,'HAC',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(83,5,'RC Lens','Lens',NULL,NULL,'RCL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(84,5,'Lille OSC','Lille',NULL,NULL,'LIL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(85,5,'FC Lorient','Lorient',NULL,NULL,'FCL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(86,5,'Olympique Lyonnais','Lyon',NULL,NULL,'OL',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(87,5,'Olympique de Marseille','Marseille',NULL,NULL,'OM',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(88,5,'FC Metz','Metz',NULL,NULL,'MET',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(89,5,'AS Monaco','Monaco',NULL,NULL,'ASM',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(90,5,'FC Nantes','Nantes',NULL,NULL,'NAN',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(91,5,'OGC Nice','Nice',NULL,NULL,'OGC',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(92,5,'Paris FC','Paris FC',NULL,NULL,'PFC',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(93,5,'Paris Saint-Germain','Paris S-G',NULL,NULL,'PSG',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(94,5,'Stade Rennais','Rennes',NULL,NULL,'REN',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(95,5,'RC Strasbourg','Strasbourg',NULL,NULL,'RCS',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09'),
-(96,5,'Toulouse FC','Toulouse',NULL,NULL,'TFC',NULL,'2026-07-09 13:57:09','2026-07-09 13:57:09');
+(1,1,'Arsenal','Arsenal',NULL,NULL,'ARS',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(2,1,'Aston Villa','Aston Villa',NULL,NULL,'AVL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(3,1,'AFC Bournemouth','Bournemouth',NULL,NULL,'BOU',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(4,1,'Brentford','Brentford',NULL,NULL,'BRE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(5,1,'Brighton & Hove Albion','Brighton',NULL,NULL,'BHA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(6,1,'Burnley','Burnley',NULL,NULL,'BUR',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(7,1,'Chelsea','Chelsea',NULL,NULL,'CHE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(8,1,'Crystal Palace','Crystal Palace',NULL,NULL,'CRY',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(9,1,'Everton','Everton',NULL,NULL,'EVE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(10,1,'Fulham','Fulham',NULL,NULL,'FUL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(11,1,'Leeds United','Leeds United',NULL,NULL,'LEE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(12,1,'Liverpool','Liverpool',NULL,NULL,'LIV',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(13,1,'Manchester City','Manchester City',NULL,NULL,'MCI',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(14,1,'Manchester United','Manchester Utd',NULL,NULL,'MUN',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(15,1,'Newcastle United','Newcastle Utd',NULL,NULL,'NEW',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(16,1,'Nottingham Forest','Nott\'ham Forest',NULL,NULL,'NFO',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(17,1,'Sunderland','Sunderland',NULL,NULL,'SUN',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(18,1,'Tottenham Hotspur','Tottenham',NULL,NULL,'TOT',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(19,1,'West Ham United','West Ham',NULL,NULL,'WHU',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(20,1,'Wolverhampton Wanderers','Wolves',NULL,NULL,'WOL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(21,2,'Deportivo Alavés','Alavés',NULL,NULL,'ALA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(22,2,'Athletic Club','Athletic Club',NULL,NULL,'ATH',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(23,2,'Atlético Madrid','Atlético Madrid',NULL,NULL,'ATM',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(24,2,'FC Barcelona','Barcelona',NULL,NULL,'BAR',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(25,2,'Real Betis','Betis',NULL,NULL,'BET',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(26,2,'Celta Vigo','Celta Vigo',NULL,NULL,'CEL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(27,2,'Elche','Elche',NULL,NULL,'ELC',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(28,2,'Espanyol','Espanyol',NULL,NULL,'ESP',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(29,2,'Getafe','Getafe',NULL,NULL,'GET',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(30,2,'Girona','Girona',NULL,NULL,'GIR',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(31,2,'Levante','Levante',NULL,NULL,'LEV',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(32,2,'RCD Mallorca','Mallorca',NULL,NULL,'MLL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(33,2,'Osasuna','Osasuna',NULL,NULL,'OSA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(34,2,'Rayo Vallecano','Rayo Vallecano',NULL,NULL,'RAY',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(35,2,'Real Madrid','Real Madrid',NULL,NULL,'RMA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(36,2,'Real Oviedo','Oviedo',NULL,NULL,'OVI',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(37,2,'Real Sociedad','Real Sociedad',NULL,NULL,'RSO',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(38,2,'Sevilla','Sevilla',NULL,NULL,'SEV',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(39,2,'Valencia','Valencia',NULL,NULL,'VAL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(40,2,'Villarreal','Villarreal',NULL,NULL,'VIL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(41,3,'Atalanta','Atalanta',NULL,NULL,'ATA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(42,3,'Bologna','Bologna',NULL,NULL,'BOL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(43,3,'Cagliari','Cagliari',NULL,NULL,'CAG',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(44,3,'Como','Como',NULL,NULL,'COM',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(45,3,'Cremonese','Cremonese',NULL,NULL,'CRE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(46,3,'Fiorentina','Fiorentina',NULL,NULL,'FIO',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(47,3,'Genoa','Genoa',NULL,NULL,'GEN',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(48,3,'Hellas Verona','Hellas Verona',NULL,NULL,'VER',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(49,3,'Inter Milan','Inter',NULL,NULL,'INT',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(50,3,'Juventus','Juventus',NULL,NULL,'JUV',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(51,3,'Lazio','Lazio',NULL,NULL,'LAZ',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(52,3,'Lecce','Lecce',NULL,NULL,'LEC',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(53,3,'AC Milan','Milan',NULL,NULL,'MIL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(54,3,'Napoli','Napoli',NULL,NULL,'NAP',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(55,3,'Parma','Parma',NULL,NULL,'PAR',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(56,3,'Pisa','Pisa',NULL,NULL,'PIS',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(57,3,'AS Roma','Roma',NULL,NULL,'ROM',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(58,3,'Sassuolo','Sassuolo',NULL,NULL,'SAS',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(59,3,'Torino','Torino',NULL,NULL,'TOR',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(60,3,'Udinese','Udinese',NULL,NULL,'UDI',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(61,4,'FC Augsburg','Augsburg',NULL,NULL,'FCA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(62,4,'Bayer Leverkusen','Leverkusen',NULL,NULL,'B04',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(63,4,'Bayern Munich','Bayern Munich',NULL,NULL,'FCB',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(64,4,'Borussia Dortmund','Dortmund',NULL,NULL,'BVB',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(65,4,'Borussia Mönchengladbach','Gladbach',NULL,NULL,'BMG',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(66,4,'Eintracht Frankfurt','Eint Frankfurt',NULL,NULL,'SGE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(67,4,'SC Freiburg','Freiburg',NULL,NULL,'SCF',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(68,4,'Hamburger SV','Hamburger SV',NULL,NULL,'HSV',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(69,4,'1. FC Heidenheim','Heidenheim',NULL,NULL,'HDH',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(70,4,'TSG Hoffenheim','Hoffenheim',NULL,NULL,'TSG',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(71,4,'1. FC Köln','Köln',NULL,NULL,'KOE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(72,4,'Mainz 05','Mainz 05',NULL,NULL,'M05',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(73,4,'RB Leipzig','RB Leipzig',NULL,NULL,'RBL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(74,4,'FC St. Pauli','St. Pauli',NULL,NULL,'STP',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(75,4,'VfB Stuttgart','Stuttgart',NULL,NULL,'VFB',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(76,4,'Union Berlin','Union Berlin',NULL,NULL,'FCU',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(77,4,'Werder Bremen','Werder Bremen',NULL,NULL,'SVW',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(78,4,'VfL Wolfsburg','Wolfsburg',NULL,NULL,'WOB',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(79,5,'Angers SCO','Angers',NULL,NULL,'ANG',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(80,5,'AJ Auxerre','Auxerre',NULL,NULL,'AJA',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(81,5,'Stade Brestois','Brest',NULL,NULL,'BRE',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(82,5,'Le Havre','Le Havre',NULL,NULL,'HAC',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(83,5,'RC Lens','Lens',NULL,NULL,'RCL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(84,5,'Lille OSC','Lille',NULL,NULL,'LIL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(85,5,'FC Lorient','Lorient',NULL,NULL,'FCL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(86,5,'Olympique Lyonnais','Lyon',NULL,NULL,'OL',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(87,5,'Olympique de Marseille','Marseille',NULL,NULL,'OM',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(88,5,'FC Metz','Metz',NULL,NULL,'MET',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(89,5,'AS Monaco','Monaco',NULL,NULL,'ASM',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(90,5,'FC Nantes','Nantes',NULL,NULL,'NAN',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(91,5,'OGC Nice','Nice',NULL,NULL,'OGC',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(92,5,'Paris FC','Paris FC',NULL,NULL,'PFC',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(93,5,'Paris Saint-Germain','Paris S-G',NULL,NULL,'PSG',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(94,5,'Stade Rennais','Rennes',NULL,NULL,'REN',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(95,5,'RC Strasbourg','Strasbourg',NULL,NULL,'RCS',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55'),
+(96,5,'Toulouse FC','Toulouse',NULL,NULL,'TFC',NULL,'2026-07-09 19:21:55','2026-07-09 19:21:55');
 /*!40000 ALTER TABLE `teams` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -972,4 +1044,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-07-09 13:57:21
+-- Dump completed on 2026-07-09 19:21:55

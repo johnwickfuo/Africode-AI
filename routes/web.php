@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccumulatorsController;
 use App\Http\Controllers\AccuracyController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
@@ -9,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('/match/{fixture}', MatchDetailController::class)->name('match.show');
+Route::get('/accumulators', AccumulatorsController::class)->name('accumulators');
 Route::get('/accuracy', AccuracyController::class)->name('accuracy');
 Route::get('/history', HistoryController::class)->name('history');
 

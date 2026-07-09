@@ -171,6 +171,7 @@ the file.
 | 03:30 | `SettlePredictionsJob`   | scores pending picks, refreshes `model_accuracy` |
 | 04:00 | `ScrapePlayerStatsJob`   | one batch of player match stats (new matches first, then backfill) |
 | 06:00 | `GeneratePredictionsJob` | runs the models for the next 7 days of fixtures |
+| 06:30 | `GenerateAccumulatorsJob` | builds the daily 3x-10000x accumulator set from the fresh predictions |
 
 ### Player-stats backfill
 

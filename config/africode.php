@@ -62,6 +62,15 @@ return [
         'timeout_seconds' => 600,
     ],
 
+    // Daily accumulators built from model fair odds (1/probability).
+    'accas' => [
+        'tiers' => [3, 10, 20, 50, 100, 1000, 10000],
+        // Leg eligibility band: floor keeps near-coin-flips out, ceiling
+        // keeps trivial "over 0.5 goals" legs out (same ethos as Best Bets).
+        'leg_min_prob' => 0.55,
+        'leg_max_prob' => 0.92,
+    ],
+
     // Optional single password protecting the whole app (Phase 1, no auth).
     'access_password' => env('APP_ACCESS_PASSWORD'),
 

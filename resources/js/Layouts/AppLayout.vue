@@ -6,6 +6,7 @@ const page = usePage();
 
 const navigation = [
     { label: 'Fixtures', href: '/' },
+    { label: 'Accas', href: '/accumulators' },
     { label: 'Accuracy', href: '/accuracy' },
     { label: 'History', href: '/history' },
 ];

@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\GenerateAccumulatorsJob;
 use App\Jobs\GeneratePredictionsJob;
 use App\Jobs\ImportFbrefDataJob;
 use App\Jobs\RecomputeProfilesJob;
@@ -39,4 +40,8 @@ Schedule::job(new ScrapePlayerStatsJob)
 
 Schedule::job(new GeneratePredictionsJob)
     ->dailyAt('06:00')
+    ->timezone('Africa/Lagos');
+
+Schedule::job(new GenerateAccumulatorsJob)
+    ->dailyAt('06:30')
     ->timezone('Africa/Lagos');
