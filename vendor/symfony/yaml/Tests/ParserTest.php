@@ -12,6 +12,8 @@
 namespace Symfony\Component\Yaml\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Exception\ParseException;
@@ -1042,9 +1044,11 @@ class ParserTest extends TestCase
         return $tests;
     }
 
+    #[IgnoreDeprecations]
+    #[Group('legacy')]
     public function testNullAsDuplicatedData()
     {
-        $this->expectException(ParseException::class);
+        $this->expectUserDeprecationMessage('Since symfony/yaml 7.2: Duplicate key "child" detected on line 4 whilst parsing YAML. Silent handling of duplicate mapping keys in YAML is deprecated and will throw a ParseException in 8.0.');
 
         $yaml = <<<EOD
             parent:
@@ -1063,17 +1067,6 @@ class ParserTest extends TestCase
             EOF;
 
         $this->assertSame(['hash' => null], Yaml::parse($input));
-    }
-
-    public function testLeadingCommentBlockIsIgnored()
-    {
-        $yaml = <<<'EOF'
-            # comment 1
-            # comment 2
-            foo: bar
-            EOF;
-
-        $this->assertSame(['foo' => 'bar'], Yaml::parse($yaml));
     }
 
     public function testCommentAtTheRootIndent()

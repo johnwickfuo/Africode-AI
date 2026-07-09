@@ -161,7 +161,11 @@ final class TranslationLintCommandTest extends TestCase
         $command = new TranslationLintCommand($translator, $enabledLocales);
 
         $application = new Application();
-        $application->addCommand($command);
+        if (method_exists($application, 'addCommand')) {
+            $application->addCommand($command);
+        } else {
+            $application->add($command);
+        }
 
         return $command;
     }

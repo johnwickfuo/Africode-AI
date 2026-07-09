@@ -115,13 +115,6 @@ class InlineTest extends TestCase
         Inline::parse('!php/enum SomeEnum::Foo', Yaml::PARSE_EXCEPTION_ON_INVALID_TYPE);
     }
 
-    public function testParsePhpObjectThrowsExceptionOnNonStringScalar()
-    {
-        $this->expectException(ParseException::class);
-        $this->expectExceptionMessage('The "!php/object" tag only supports a string value, got "array"');
-        Inline::parse('!php/object !php/enum Symfony\Component\Yaml\Tests\Fixtures\FooUnitEnum', Yaml::PARSE_OBJECT | Yaml::PARSE_CONSTANT);
-    }
-
     #[DataProvider('getTestsForDump')]
     public function testDump($yaml, $value, $parseFlags = 0)
     {
@@ -547,8 +540,6 @@ class InlineTest extends TestCase
             ['[\'foo,bar\', \'foo bar\']', ['foo,bar', 'foo bar']],
 
             // mappings
-            ['{}', []],
-            ['{ foo: {} }', ['foo' => []]],
             ['{ foo: bar, bar: foo, \'false\': false, \'null\': null, integer: 12 }', ['foo' => 'bar', 'bar' => 'foo', 'false' => false, 'null' => null, 'integer' => 12]],
             ['{ foo: bar, bar: \'foo: bar\' }', ['foo' => 'bar', 'bar' => 'foo: bar']],
 

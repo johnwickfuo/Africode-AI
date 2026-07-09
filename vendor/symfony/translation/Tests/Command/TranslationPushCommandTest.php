@@ -370,7 +370,11 @@ class TranslationPushCommandTest extends TranslationProviderTestCase
         );
 
         $application = new Application();
-        $application->addCommand($command);
+        if (method_exists($application, 'addCommand')) {
+            $application->addCommand($command);
+        } else {
+            $application->add($command);
+        }
         $tester = new CommandTester($application->find('translation:push'));
 
         $tester->execute(['--locales' => ['en', 'fr']]);
@@ -382,7 +386,12 @@ class TranslationPushCommandTest extends TranslationProviderTestCase
     public function testComplete(array $input, array $expectedSuggestions)
     {
         $application = new Application();
-        $application->addCommand($this->createCommand($this->createStub(ProviderInterface::class), ['en', 'fr', 'it'], ['messages', 'validators'], ['loco', 'crowdin', 'lokalise']));
+        $command = $this->createCommand($this->createStub(ProviderInterface::class), ['en', 'fr', 'it'], ['messages', 'validators'], ['loco', 'crowdin', 'lokalise']);
+        if (method_exists($application, 'addCommand')) {
+            $application->addCommand($command);
+        } else {
+            $application->add($command);
+        }
 
         $tester = new CommandCompletionTester($application->get('translation:push'));
         $suggestions = $tester->complete($input);
@@ -411,7 +420,11 @@ class TranslationPushCommandTest extends TranslationProviderTestCase
     {
         $command = $this->createCommand($provider, $locales, $domains);
         $application = new Application();
-        $application->addCommand($command);
+        if (method_exists($application, 'addCommand')) {
+            $application->addCommand($command);
+        } else {
+            $application->add($command);
+        }
 
         return new CommandTester($application->find('translation:push'));
     }
