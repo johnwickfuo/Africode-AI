@@ -113,6 +113,24 @@ class PagesTest extends TestCase
             'away_goals' => 2,
         ]);
 
+        // Key players: two Arsenal appearances this season.
+        $saka = \App\Models\Player::create([
+            'team_id' => $fixture->home_team_id, 'name' => 'Bukayo Saka',
+            'nationality' => 'ENG', 'position' => 'RW', 'last_seen_at' => now(),
+        ]);
+        $finished = Fixture::create([
+            'league_id' => $fixture->league_id, 'season' => '2025-2026',
+            'home_team_id' => $fixture->home_team_id,
+            'away_team_id' => $this->team('Chelsea')->id,
+            'kickoff_utc' => now('UTC')->subDays(10),
+            'status' => Fixture::STATUS_FINISHED, 'home_goals' => 2, 'away_goals' => 0,
+        ]);
+        \App\Models\PlayerMatchStat::create([
+            'player_id' => $saka->id, 'fixture_id' => $finished->id,
+            'team_id' => $fixture->home_team_id, 'minutes' => 90,
+            'goals' => 2, 'assists' => 1, 'yellows' => 1, 'reds' => 0,
+        ]);
+
         $this->get("/match/{$fixture->id}")
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
@@ -124,6 +142,10 @@ class PagesTest extends TestCase
                 ->where('profiles.home.attack_strength', 1.2)
                 ->count('head_to_head', 1)
                 ->where('head_to_head.0.home_goals', 1)
+                ->where('key_players.home.top_scorer.name', 'Bukayo Saka')
+                ->where('key_players.home.top_scorer.value', 2)
+                ->where('key_players.home.most_carded.name', 'Bukayo Saka')
+                ->where('key_players.away', null) // backfill hasn't reached Spurs
             );
     }
 

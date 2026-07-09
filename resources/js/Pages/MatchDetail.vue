@@ -13,7 +13,14 @@ const props = defineProps({
     profiles: { type: Object, required: true },
     xg_trend: { type: Object, required: true },
     head_to_head: { type: Array, default: () => [] },
+    key_players: { type: Object, default: () => ({ home: null, away: null }) },
 });
+
+const keyPlayerRows = [
+    ['top_scorer', 'Top scorer', 'goals'],
+    ['top_assister', 'Top assister', 'assists'],
+    ['most_carded', 'Most carded', 'cards'],
+];
 
 const sections = computed(() => {
     if (!props.prediction) return [];
@@ -201,6 +208,50 @@ const pageTitle = computed(
                     </p>
                 </div>
             </div>
+        </section>
+
+        <!-- Key players -->
+        <section class="mb-6">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                Key players ({{ fixture.season }})
+            </h2>
+            <div v-if="key_players.home || key_players.away" class="grid gap-3 sm:grid-cols-2">
+                <div
+                    v-for="side in ['home', 'away']"
+                    :key="side"
+                    class="rounded-xl border border-slate-800 bg-slate-900 p-4"
+                >
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {{ fixture[`${side}_team`].name }}
+                    </p>
+                    <template v-if="key_players[side]">
+                        <ul class="space-y-1.5 text-sm">
+                            <li
+                                v-for="[key, label, unit] in keyPlayerRows"
+                                :key="key"
+                                class="flex items-center justify-between gap-2"
+                            >
+                                <span class="text-slate-400">{{ label }}</span>
+                                <span v-if="key_players[side][key]" class="truncate font-semibold text-slate-200">
+                                    {{ key_players[side][key].name }}
+                                    <span class="font-mono text-green-400">{{ key_players[side][key].value }}</span>
+                                    <span class="ml-0.5 text-xs text-slate-500">{{ unit }}</span>
+                                </span>
+                                <span v-else class="text-slate-600">—</span>
+                            </li>
+                        </ul>
+                    </template>
+                    <p v-else class="text-sm text-slate-500">
+                        Player data still backfilling for this team.
+                    </p>
+                </div>
+            </div>
+            <p
+                v-else
+                class="rounded-xl border border-dashed border-slate-700 p-4 text-sm text-slate-500"
+            >
+                Player data is still backfilling — key players appear as match reports are imported.
+            </p>
         </section>
 
         <!-- Head to head -->

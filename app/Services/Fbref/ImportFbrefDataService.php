@@ -159,6 +159,7 @@ class ImportFbrefDataService
         $fixture->home_goals = $match['home_goals'];
         $fixture->away_goals = $match['away_goals'];
         $fixture->matchday ??= $match['matchday'] ?? null;
+        $fixture->fbref_game_id ??= $match['game_id'] ?? null;
         $fixture->is_derby = Rivalry::isDerbyPair($home->id, $away->id);
 
         if (filled($match['referee'] ?? null)) {

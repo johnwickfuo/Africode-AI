@@ -35,6 +35,16 @@ return [
         // run it via `africode:scrape-fbref --now`. Nightly incremental runs
         // only fetch new pages and fit comfortably in this cap.
         'scrape_timeout_seconds' => 7200,
+
+        // Player match stats: one FBref match-report request per fixture, so
+        // the 3-season backfill runs as nightly batches (resumable via the
+        // player_scrape_progress table). ~5,400 historical matches at the
+        // default batch size drain in a few weeks while the app stays fully
+        // usable; raise the batch for manual catch-up runs.
+        'player_script_path' => base_path('scripts/fbref_scrape_players.py'),
+        'player_output_path' => storage_path('app/pipeline/fbref_players_latest.json'),
+        'player_batch_size' => (int) env('FBREF_PLAYER_BATCH_SIZE', 150),
+        'player_scrape_timeout_seconds' => 5400,
     ],
 
     // Best Bet eligibility window (spec section 7.5).

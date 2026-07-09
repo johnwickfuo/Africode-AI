@@ -23,6 +23,7 @@ class Fixture extends Model
         'status',
         'referee_id',
         'footballdata_match_id',
+        'fbref_game_id',
         'home_goals',
         'away_goals',
         'is_derby',

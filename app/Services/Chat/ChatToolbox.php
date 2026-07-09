@@ -4,6 +4,8 @@ namespace App\Services\Chat;
 
 use App\Models\Fixture;
 use App\Models\League;
+use App\Models\Player;
+use App\Models\PlayerMatchStat;
 use App\Models\PredictionMarket;
 use App\Models\Referee;
 use App\Models\Team;
@@ -90,6 +92,42 @@ class ChatToolbox
                 ],
             ],
             [
+                'name' => 'get_player_stats',
+                'description' => 'Season totals and per-match averages for a player: goals, assists, shots, shots on target, cards, minutes, xG, xA.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'player' => ['type' => 'STRING', 'description' => 'Player name or part of it, e.g. "Saka"'],
+                        'season' => ['type' => 'STRING', 'description' => 'Season like "2025-2026" (optional, defaults to latest with data)'],
+                    ],
+                    'required' => ['player'],
+                ],
+            ],
+            [
+                'name' => 'get_top_players',
+                'description' => 'Leaderboard of the top 10 players for a stat, optionally per league and season.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'stat' => ['type' => 'STRING', 'description' => 'One of: goals, assists, cards, shots_on_target'],
+                        'league' => ['type' => 'STRING', 'description' => 'League code: PL, PD, SA, BL1, FL1 (optional, all leagues if omitted)'],
+                        'season' => ['type' => 'STRING', 'description' => 'Season like "2025-2026" (optional, defaults to latest with data)'],
+                    ],
+                    'required' => ['stat'],
+                ],
+            ],
+            [
+                'name' => 'get_player_recent_form',
+                'description' => "A player's last 5 matches with minutes, goals, assists, shots and cards per match.",
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'player' => ['type' => 'STRING', 'description' => 'Player name or part of it'],
+                    ],
+                    'required' => ['player'],
+                ],
+            ],
+            [
                 'name' => 'get_accuracy_stats',
                 'description' => "The prediction model's own accuracy: hit rates of settled picks per market and for headline Best Bets.",
                 'parameters' => [
@@ -119,6 +157,9 @@ class ChatToolbox
             'get_h2h' => $this->getH2h($args),
             'get_referee_profile' => $this->getRefereeProfile($args),
             'get_accuracy_stats' => $this->getAccuracyStats($args),
+            'get_player_stats' => $this->getPlayerStats($args),
+            'get_top_players' => $this->getTopPlayers($args),
+            'get_player_recent_form' => $this->getPlayerRecentForm($args),
             default => ['error' => "Unknown tool '{$name}'."],
         };
     }
@@ -361,5 +402,186 @@ class ChatToolbox
             'overall_hit_rate' => round($settled->where('outcome', PredictionMarket::OUTCOME_WON)->count() / $settled->count(), 3),
             'per_market' => $perMarket,
         ];
+    }
+
+    private function findPlayer(string $query): ?Player
+    {
+        $needle = '%'.str_replace(['%', '_'], ['\%', '\_'], trim($query)).'%';
+
+        // Prefer the shortest matching name: "Saka" should hit "Bukayo Saka"
+        // even if a longer partial match exists.
+        return Player::query()
+            ->where('name', 'like', $needle)
+            ->orderByRaw('length(name)')
+            ->orderBy('id')
+            ->first();
+    }
+
+    private const BACKFILL_NOTE = 'Player history is backfilled progressively (newest matches first) — older matches may not be covered yet.';
+
+    private function getPlayerStats(array $args): array
+    {
+        if ($error = $this->validate($args, [
+            'player' => 'required|string|max:60',
+            'season' => 'nullable|string|regex:/^\d{4}-\d{4}$/',
+        ])) {
+            return $error;
+        }
+
+        $player = $this->findPlayer($args['player']);
+        if ($player === null) {
+            return ['error' => "No player matching '{$args['player']}' in the data. ".self::BACKFILL_NOTE];
+        }
+
+        $season = $args['season'] ?? $this->latestSeasonWithData($player);
+        if ($season === null) {
+            return ['result' => "{$player->name} has no match data imported yet. ".self::BACKFILL_NOTE];
+        }
+
+        $rows = PlayerMatchStat::query()
+            ->join('fixtures', 'fixtures.id', '=', 'player_match_stats.fixture_id')
+            ->where('player_match_stats.player_id', $player->id)
+            ->where('fixtures.season', $season)
+            ->get(['player_match_stats.*']);
+
+        if ($rows->isEmpty()) {
+            return ['result' => "No {$season} match data for {$player->name}. ".self::BACKFILL_NOTE];
+        }
+
+        $matches = $rows->count();
+        $totals = [
+            'matches' => $matches,
+            'minutes' => (int) $rows->sum('minutes'),
+            'goals' => (int) $rows->sum('goals'),
+            'assists' => (int) $rows->sum('assists'),
+            'shots' => (int) $rows->sum('shots'),
+            'shots_on_target' => (int) $rows->sum('shots_on_target'),
+            'yellows' => (int) $rows->sum('yellows'),
+            'reds' => (int) $rows->sum('reds'),
+            'xg' => round($rows->sum('xg'), 2),
+            'xa' => round($rows->sum('xa'), 2),
+        ];
+
+        return [
+            'player' => $player->name,
+            'team' => $player->team->name,
+            'position' => $player->position,
+            'nationality' => $player->nationality,
+            'season' => $season,
+            'totals' => $totals,
+            'per_match' => collect($totals)->except('matches')
+                ->map(fn ($value) => round($value / $matches, 2))->all(),
+            'note' => self::BACKFILL_NOTE,
+        ];
+    }
+
+    private function getTopPlayers(array $args): array
+    {
+        if ($error = $this->validate($args, [
+            'stat' => 'required|string|in:goals,assists,cards,shots_on_target',
+            'league' => 'nullable|string|in:'.implode(',', self::LEAGUE_CODES),
+            'season' => 'nullable|string|regex:/^\d{4}-\d{4}$/',
+        ])) {
+            return $error;
+        }
+
+        $statColumn = match ($args['stat']) {
+            'cards' => 'COALESCE(player_match_stats.yellows, 0) + COALESCE(player_match_stats.reds, 0)',
+            default => "COALESCE(player_match_stats.{$args['stat']}, 0)",
+        };
+
+        $query = PlayerMatchStat::query()
+            ->join('fixtures', 'fixtures.id', '=', 'player_match_stats.fixture_id')
+            ->join('players', 'players.id', '=', 'player_match_stats.player_id')
+            ->when(isset($args['league']), function ($query) use ($args) {
+                $leagueId = League::where('code', $args['league'])->value('id');
+                $query->where('fixtures.league_id', $leagueId);
+            });
+
+        $season = $args['season']
+            ?? (clone $query)->orderByDesc('fixtures.season')->value('fixtures.season');
+
+        if ($season === null) {
+            return ['result' => 'No player data imported yet. '.self::BACKFILL_NOTE];
+        }
+
+        $leaders = $query
+            ->where('fixtures.season', $season)
+            ->groupBy('players.id', 'players.name')
+            ->selectRaw('players.id as player_id, players.name as name')
+            ->selectRaw("SUM({$statColumn}) as total")
+            ->selectRaw('COUNT(*) as matches')
+            ->orderByDesc('total')
+            ->limit(10)
+            ->get();
+
+        if ($leaders->isEmpty() || (int) $leaders->first()->total === 0) {
+            return ['result' => "No {$args['stat']} data for {$season} yet. ".self::BACKFILL_NOTE];
+        }
+
+        $teams = Player::whereIn('id', $leaders->pluck('player_id'))->with('team:id,name')->get()->keyBy('id');
+
+        return [
+            'stat' => $args['stat'],
+            'season' => $season,
+            'league' => $args['league'] ?? 'all tracked leagues',
+            'leaders' => $leaders->map(fn ($row) => [
+                'player' => $row->name,
+                'team' => $teams[$row->player_id]?->team?->name,
+                'total' => (int) $row->total,
+                'matches' => (int) $row->matches,
+            ])->all(),
+            'note' => self::BACKFILL_NOTE,
+        ];
+    }
+
+    private function getPlayerRecentForm(array $args): array
+    {
+        if ($error = $this->validate($args, ['player' => 'required|string|max:60'])) {
+            return $error;
+        }
+
+        $player = $this->findPlayer($args['player']);
+        if ($player === null) {
+            return ['error' => "No player matching '{$args['player']}' in the data. ".self::BACKFILL_NOTE];
+        }
+
+        $rows = PlayerMatchStat::query()
+            ->where('player_id', $player->id)
+            ->with(['fixture.homeTeam:id,name', 'fixture.awayTeam:id,name'])
+            ->join('fixtures', 'fixtures.id', '=', 'player_match_stats.fixture_id')
+            ->orderByDesc('fixtures.kickoff_utc')
+            ->limit(5)
+            ->get(['player_match_stats.*']);
+
+        if ($rows->isEmpty()) {
+            return ['result' => "No match data for {$player->name} yet. ".self::BACKFILL_NOTE];
+        }
+
+        return [
+            'player' => $player->name,
+            'team' => $player->team->name,
+            'last_matches' => $rows->map(fn (PlayerMatchStat $row) => [
+                'date' => $row->fixture->kickoff_utc->format('Y-m-d'),
+                'match' => "{$row->fixture->homeTeam->name} {$row->fixture->home_goals}-{$row->fixture->away_goals} {$row->fixture->awayTeam->name}",
+                'minutes' => $row->minutes,
+                'goals' => $row->goals,
+                'assists' => $row->assists,
+                'shots' => $row->shots,
+                'shots_on_target' => $row->shots_on_target,
+                'cards' => ($row->yellows ?? 0) + ($row->reds ?? 0),
+                'xg' => $row->xg,
+            ])->all(),
+            'note' => self::BACKFILL_NOTE,
+        ];
+    }
+
+    private function latestSeasonWithData(Player $player): ?string
+    {
+        return PlayerMatchStat::query()
+            ->join('fixtures', 'fixtures.id', '=', 'player_match_stats.fixture_id')
+            ->where('player_match_stats.player_id', $player->id)
+            ->orderByDesc('fixtures.season')
+            ->value('fixtures.season');
     }
 }

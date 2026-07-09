@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Fixture;
 use App\Models\MatchStat;
+use App\Models\PlayerMatchStat;
 use App\Models\TeamProfile;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -72,7 +73,51 @@ class MatchDetailController extends Controller
                 'away' => $this->xgTrend($fixture->away_team_id),
             ],
             'head_to_head' => $this->headToHead($fixture, $displayTz),
+            'key_players' => [
+                'home' => $this->keyPlayers($fixture->home_team_id, $fixture->season),
+                'away' => $this->keyPlayers($fixture->away_team_id, $fixture->season),
+            ],
         ]);
+    }
+
+    /**
+     * The team's top scorer, top assister, and most-carded player this
+     * season. Rows are attributed to the team the player appeared for in
+     * each match (player_match_stats.team_id), so mid-season transfers
+     * don't leak stats between clubs. Null while the player backfill has
+     * not reached this team/season yet.
+     */
+    private function keyPlayers(int $teamId, string $season): ?array
+    {
+        $totals = PlayerMatchStat::query()
+            ->join('fixtures', 'fixtures.id', '=', 'player_match_stats.fixture_id')
+            ->join('players', 'players.id', '=', 'player_match_stats.player_id')
+            ->where('player_match_stats.team_id', $teamId)
+            ->where('fixtures.season', $season)
+            ->groupBy('players.id', 'players.name')
+            ->selectRaw('players.name as name')
+            ->selectRaw('SUM(COALESCE(player_match_stats.goals, 0)) as goals')
+            ->selectRaw('SUM(COALESCE(player_match_stats.assists, 0)) as assists')
+            ->selectRaw('SUM(COALESCE(player_match_stats.yellows, 0) + COALESCE(player_match_stats.reds, 0)) as cards')
+            ->get();
+
+        if ($totals->isEmpty()) {
+            return null;
+        }
+
+        $pick = function (string $stat) use ($totals): ?array {
+            $best = $totals->sortByDesc($stat)->first();
+
+            return (int) $best->{$stat} > 0
+                ? ['name' => $best->name, 'value' => (int) $best->{$stat}]
+                : null;
+        };
+
+        return [
+            'top_scorer' => $pick('goals'),
+            'top_assister' => $pick('assists'),
+            'most_carded' => $pick('cards'),
+        ];
     }
 
     private function profilePayload(int $teamId, string $season): ?array

@@ -76,15 +76,15 @@ STAT_FIELDS = (
 log = logging.getLogger("fbref_scrape")
 
 
-def read_with_retry(label, reader):
+def read_with_retry(label, reader, attempts=MAX_ATTEMPTS, backoff=BACKOFF_SECONDS):
     """Run a soccerdata read with exponential-backoff retries; None on failure."""
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    for attempt in range(1, attempts + 1):
         try:
             return reader()
         except Exception:
-            log.exception("%s failed (attempt %d/%d)", label, attempt, MAX_ATTEMPTS)
-            if attempt < MAX_ATTEMPTS:
-                time.sleep(BACKOFF_SECONDS * 2 ** (attempt - 1))
+            log.exception("%s failed (attempt %d/%d)", label, attempt, attempts)
+            if attempt < attempts:
+                time.sleep(backoff * 2 ** (attempt - 1))
     return None
 
 
@@ -235,7 +235,7 @@ def collect_matches(fbref, stats):
     columns = {
         name: find_column(df, name)
         for name in (
-            "league", "season", "game", "date", "time", "week", "round",
+            "league", "season", "game", "game_id", "date", "time", "week", "round",
             "home_team", "away_team", "score", "referee", "home_xg", "away_xg",
         )
     }
@@ -275,6 +275,8 @@ def collect_matches(fbref, stats):
             "league": league,
             "season": season,
             "game": game,
+            # FBref match-report id — the key the player-stats scraper uses.
+            "game_id": text(value(row, "game_id")),
             "date": date,
             # FBref lists venue-local kickoff times; the importer treats this
             # as approximate. Date-level precision is enough for modeling.

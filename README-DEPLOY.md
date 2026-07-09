@@ -158,7 +158,24 @@ When it finishes, the dashboard shows every upcoming fixture with a Best Bet.
 | 03:00 | `SyncFixturesJob`      | football-data.org: next 14 days + last 3 days (7s between requests) |
 | 03:15 | `RecomputeProfilesJob` | team + referee rolling profiles |
 | 03:30 | `SettlePredictionsJob` | scores pending picks, refreshes `model_accuracy` |
+| 04:00 | `ScrapePlayerStatsJob` | one batch of player match stats (new matches first, then the historical backfill) |
 | 06:00 | `GeneratePredictionsJob` | runs the models for the next 7 days of fixtures |
+
+### Player-stats backfill
+
+Player data needs one FBref match-report request per fixture, so the
+3-season history backfills in nightly batches (default 150 matches,
+`FBREF_PLAYER_BATCH_SIZE`) tracked in the `player_scrape_progress` table —
+roughly 5,400 matches ≈ a few weeks at the default pace. The app is fully
+usable throughout; player features simply cover what has landed (newest
+matches first). To backfill faster, run batches manually:
+
+```bash
+php artisan africode:scrape-players --now --batch=400   # repeat as desired
+```
+
+`SELECT status, COUNT(*) FROM player_scrape_progress GROUP BY status;`
+shows how far along the backfill is.
 
 ## 9. Troubleshooting
 
