@@ -1,5 +1,6 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
+import ChatWidget from '../Components/ChatWidget.vue';
 
 const page = usePage();
 
@@ -65,5 +66,7 @@ const isActive = (href) =>
             </p>
             <p class="mt-1">Africode Football AI — statistical models, not certainties. Bet responsibly.</p>
         </footer>
+
+        <ChatWidget />
     </div>
 </template>

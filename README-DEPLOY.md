@@ -88,6 +88,13 @@ BEST_BET_MAX_PROB=0.92
 
 # Optional: single password protecting the whole app (HTTP Basic, any username)
 APP_ACCESS_PASSWORD=...
+
+# Chat assistant (optional) — free key from https://aistudio.google.com/apikey
+# Leave GEMINI_API_KEY empty to run without the chatbot (widget shows a
+# friendly error). GEMINI_DAILY_CAP guards the free quota; per-user limits
+# (10/min, 60/day) are built in. Usage is logged to the chat_logs table.
+GEMINI_API_KEY=...
+GEMINI_DAILY_CAP=1000
 ```
 
 Then (SSH) finish up:

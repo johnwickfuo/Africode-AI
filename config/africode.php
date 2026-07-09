@@ -55,4 +55,20 @@ return [
     // Optional single password protecting the whole app (Phase 1, no auth).
     'access_password' => env('APP_ACCESS_PASSWORD'),
 
+    // Gemini-powered chat assistant.
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'base_url' => 'https://generativelanguage.googleapis.com/v1beta/models/',
+        // Global daily cap on Gemini API requests (every tool round counts);
+        // resets at midnight Africa/Lagos.
+        'daily_cap' => (int) env('GEMINI_DAILY_CAP', 1000),
+        'max_tool_rounds' => 5,
+        'max_message_length' => 500,
+        'history_messages' => 10,
+        // Per-session/IP limits enforced with Laravel's RateLimiter.
+        'per_minute' => 10,
+        'per_day' => 60,
+    ],
+
 ];
