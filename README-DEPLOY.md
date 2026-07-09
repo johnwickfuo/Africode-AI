@@ -98,7 +98,7 @@ DB_QUEUE_RETRY_AFTER=7800        # must exceed the 2h FBref scrape timeout
 FOOTBALLDATA_TOKEN=<your token>  # register: https://www.football-data.org/client/register
 APIFOOTBALL_ENABLED=false
 
-PYTHON_BIN=python3
+PYTHON_BIN=/home/admin/africode-venv/bin/python3   # the venv from section 5
 FBREF_PLAYER_BATCH_SIZE=150
 BEST_BET_MIN_PROB=0.62
 BEST_BET_MAX_PROB=0.92
@@ -119,12 +119,27 @@ chmod -R ug+rw storage bootstrap/cache
 
 ## 5. Python dependencies (FBref scraping + prediction models)
 
+Ubuntu 24.04 ships no pip and marks the system Python "externally managed"
+(PEP 668), so use a virtualenv and point the app at it:
+
 ```bash
-python3 -m pip install --user -r scripts/requirements.txt
+apt update && apt install -y python3-pip python3-venv     # as root, once
+sudo -u admin python3 -m venv /home/admin/africode-venv
+sudo -u admin /home/admin/africode-venv/bin/pip install \
+    -r /home/admin/web/africodeai.online/public_html/scripts/requirements.txt
 ```
 
-`soccerdata` caches under `~/.soccerdata/` — leave it; that cache is what
-keeps nightly scrapes fast and polite.
+Then in `.env` set:
+
+```dotenv
+PYTHON_BIN=/home/admin/africode-venv/bin/python3
+```
+
+and re-run `php artisan config:cache`. If a package fails to build a wheel,
+`apt install -y build-essential python3-dev` and retry.
+
+`soccerdata` caches under `~/.soccerdata/` (the admin user's home) — leave
+it; that cache is what keeps nightly scrapes fast and polite.
 
 ## 6. Cron jobs — add manually in HestiaCP
 
