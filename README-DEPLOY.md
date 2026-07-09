@@ -13,6 +13,15 @@ jobs are added manually in HestiaCP.
 - MySQL / MariaDB + phpMyAdmin (bundled with Hestia)
 - `git` on the server
 - Python 3.11+ with `pip`
+- **Google Chrome** — soccerdata 1.9+ scrapes FBref through a real headless
+  browser (FBref is behind Cloudflare). Install once as root:
+
+  ```bash
+  wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+  apt install -y ./google-chrome-stable_current_amd64.deb
+  ```
+
+  The matching chromedriver downloads automatically on first scrape.
 
 ## 1. Connect the site to the repo
 
