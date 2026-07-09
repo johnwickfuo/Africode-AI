@@ -32,6 +32,20 @@ If the repo is private, create a GitHub **fine-grained personal access token**
 SSH key as a deploy key on the repo and use the SSH URL. The token/key only
 needs read access.
 
+**Ownership matters.** PHP-FPM and the cron jobs run as the site user
+(`admin`), which must be able to write `storage/`. If you cloned as root,
+hand the tree over and do all later git/artisan commands as `admin`:
+
+```bash
+chown -R admin:admin /home/admin/web/africodeai.online/public_html
+sudo -u admin git -C /home/admin/web/africodeai.online/public_html pull
+```
+
+(If you must run git as a different user than the files' owner, git refuses
+with "dubious ownership" — fix with
+`git config --global --add safe.directory /home/admin/web/africodeai.online/public_html`,
+or simply run git as `admin` as shown above.)
+
 ## 2. Point the web root at public/
 
 In HestiaCP: **Web → africodeai.online → Edit → Advanced Options →
