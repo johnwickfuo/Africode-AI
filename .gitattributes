@@ -9,3 +9,9 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+
+# Committed build outputs (git-pull deployment): keep them out of language
+# stats and collapse their diffs in PRs.
+vendor/** linguist-vendored -diff
+public/build/** linguist-generated -diff
+database/africode.sql linguist-generated

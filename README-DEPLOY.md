@@ -1,103 +1,100 @@
-# Africode Football AI — Deployment Guide (HestiaCP, zip upload)
+# Africode Football AI — Deployment Guide (HestiaCP + git pull)
 
-Deployment model: **zip upload to `public_html`**, SQL import via phpMyAdmin,
-`.env` configuration by hand. No git on the server required.
+Deployment model: the site directory **is a clone of this repo** —
+`git pull` is the whole deploy. `vendor/` and the compiled frontend
+(`public/build/`) are committed, so the server needs **no Composer and no
+Node**. The database is imported once from `database/africode.sql`; cron
+jobs are added manually in HestiaCP.
 
 ## 0. Server requirements
 
-- Ubuntu VPS with HestiaCP
+- Ubuntu VPS with HestiaCP, SSH access as the site user (`admin`)
 - PHP 8.2+ (CLI + FPM) with extensions: `pdo_mysql`, `mbstring`, `xml`, `curl`, `zip`, `intl`
-- MySQL / MariaDB
+- MySQL / MariaDB + phpMyAdmin (bundled with Hestia)
+- `git` on the server
 - Python 3.11+ with `pip`
-- Cron access for the web user (Hestia: **User → Cron Jobs**)
 
-## 1. Build the zip locally
+## 1. Connect the site to the repo
 
-On your local machine (needs PHP, Composer, Node):
-
-```bash
-composer install --no-dev --optimize-autoloader
-npm ci && npm run build          # compiles resources/ -> public/build/
-```
-
-Zip the project **including** `vendor/` and `public/build/`, excluding what the
-server never needs:
+The target directory `/home/admin/web/africodeai.online/public_html` must be
+empty (Hestia pre-creates index.html — delete the contents first):
 
 ```bash
-zip -r africode.zip . \
-  -x ".git/*" "node_modules/*" "tests/*" ".env" "storage/logs/*" \
-     "storage/framework/cache/data/*" "storage/framework/sessions/*" "storage/framework/views/*"
+cd /home/admin/web/africodeai.online
+rm -rf public_html/* public_html/.[!.]*
+git clone --branch claude/laravel-inertia-setup-1davog \
+    https://github.com/johnwickfuo/Africode-AI.git public_html
 ```
 
-## 2. Create the site in HestiaCP
+If the repo is private, create a GitHub **fine-grained personal access token**
+(repo → Contents: read) and clone with
+`https://<TOKEN>@github.com/johnwickfuo/Africode-AI.git`, or add the server's
+SSH key as a deploy key on the repo and use the SSH URL. The token/key only
+needs read access.
 
-1. **Web → Add Domain** (e.g. `football.example.com`).
-2. Edit the domain → **Advanced Options → Custom document root** and point it
-   at the app's `public/` folder, e.g. `/home/USER/web/football.example.com/public_html/public`.
-   Laravel must never be served from the project root — only `public/` is web-facing.
-3. Enable SSL (**Let's Encrypt** checkbox).
+## 2. Point the web root at public/
 
-Upload `africode.zip` into `public_html` (Hestia File Manager or SFTP) and
-unzip it there, so `artisan` sits at `public_html/artisan`.
+In HestiaCP: **Web → africodeai.online → Edit → Advanced Options →
+Custom document root** → set it to:
 
-## 3. Database
+```
+/home/admin/web/africodeai.online/public_html/public
+```
 
-1. **DB → Add Database** in Hestia (e.g. `africode`), note user + password.
-2. Schema + seed data, either way:
-   - **With SSH (preferred):**
-     ```bash
-     cd ~/web/football.example.com/public_html
-     php artisan migrate --seed --force
-     ```
-   - **phpMyAdmin only:** on your local machine, point `.env` at a scratch
-     MySQL database, run `php artisan migrate --seed --force`, export it with
-     `mysqldump africode_local > africode.sql`, then import `africode.sql`
-     through the server's phpMyAdmin.
+Save, and enable SSL (Let's Encrypt checkbox) while you're there. Only
+Laravel's `public/` folder is ever web-served; the repo root (with `.env`,
+`.git`, `storage/`) stays unreachable.
 
-The seeders load the 5 leagues, all 96 current-season teams, and the
-derby/rivalry list.
+## 3. Database — one manual import
 
-## 4. Configure `.env`
+1. **DB → Add Database** in Hestia (e.g. `admin_africode`), note the user
+   and password Hestia generates.
+2. Open phpMyAdmin, select the new database, **Import** →
+   `database/africode.sql` from the repo (44 KB). That loads the full
+   schema plus the seed data: 5 leagues, 96 teams, the 40-derby rivalry
+   list, and the `migrations` bookkeeping so future `php artisan migrate`
+   knows what already ran.
 
-Copy `.env.example` to `.env` in `public_html` and set:
+## 4. Configure .env
+
+```bash
+cd /home/admin/web/africodeai.online/public_html
+cp .env.example .env
+nano .env
+```
+
+Fill in:
 
 ```dotenv
 APP_NAME="Africode Football AI"
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://football.example.com
-APP_KEY=                       # then run: php artisan key:generate --force
+APP_URL=https://africodeai.online
 
-DB_DATABASE=africode
-DB_USERNAME=...
-DB_PASSWORD=...
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=admin_africode
+DB_USERNAME=admin_africode
+DB_PASSWORD=<from Hestia>
 
 QUEUE_CONNECTION=database
-DB_QUEUE_RETRY_AFTER=7800      # must exceed the 2h FBref scrape timeout
+DB_QUEUE_RETRY_AFTER=7800        # must exceed the 2h FBref scrape timeout
 
-# football-data.org token (register: https://www.football-data.org/client/register)
-FOOTBALLDATA_TOKEN=...
-
-# Optional API-Football historical backfill — leave disabled unless used
+FOOTBALLDATA_TOKEN=<your token>  # register: https://www.football-data.org/client/register
 APIFOOTBALL_ENABLED=false
-APIFOOTBALL_KEY=
 
 PYTHON_BIN=python3
+FBREF_PLAYER_BATCH_SIZE=150
 BEST_BET_MIN_PROB=0.62
 BEST_BET_MAX_PROB=0.92
 
-# Optional: single password protecting the whole app (HTTP Basic, any username)
-APP_ACCESS_PASSWORD=...
-
-# Chat assistant (optional) — free key from https://aistudio.google.com/apikey
-# Leave GEMINI_API_KEY empty to run without the chatbot (widget shows a
-# friendly error). GEMINI_DAILY_CAP guards the free quota; per-user limits
-# (10/min, 60/day) are built in. Usage is logged to the chat_logs table.
-GEMINI_API_KEY=...
+APP_ACCESS_PASSWORD=<optional site password>
+GEMINI_API_KEY=<optional, for the chat assistant>
 GEMINI_DAILY_CAP=1000
 ```
 
-Then (SSH) finish up:
+Then:
 
 ```bash
 php artisan key:generate --force
@@ -106,94 +103,100 @@ php artisan config:cache && php artisan route:cache
 chmod -R ug+rw storage bootstrap/cache
 ```
 
-No SSH? Generate `APP_KEY` locally (`php artisan key:generate --show`) and
-paste it, and skip the caches — the app works uncached.
-
-## 5. Python dependencies (FBref scraping + models)
+## 5. Python dependencies (FBref scraping + prediction models)
 
 ```bash
 python3 -m pip install --user -r scripts/requirements.txt
 ```
 
-`soccerdata` caches scraped pages under `~/.soccerdata/` — leave that in place,
-it is what keeps nightly scrapes fast and polite.
+`soccerdata` caches under `~/.soccerdata/` — leave it; that cache is what
+keeps nightly scrapes fast and polite.
 
-## 6. Cron: scheduler + queue worker
+## 6. Cron jobs — add manually in HestiaCP
 
-All external API calls and scrapes run in queued jobs — the two crontab lines
-below are the entire runtime. In Hestia (**User → Cron Jobs**) add, adjusting
-the path:
+**User → Cron Jobs → Add Cron Job**, both on the `admin` user. Two jobs,
+both running **every minute** (minute `*`, hour `*`, day `*`, month `*`,
+weekday `*`):
 
-```cron
-* * * * * cd /home/USER/web/football.example.com/public_html && php artisan schedule:run >> /dev/null 2>&1
-* * * * * cd /home/USER/web/football.example.com/public_html && /usr/bin/flock -n storage/framework/queue.lock php artisan queue:work --stop-when-empty --timeout=7800 --tries=1 >> storage/logs/queue.log 2>&1
+Job 1 — Laravel scheduler (fires the whole nightly pipeline):
+
+```
+cd /home/admin/web/africodeai.online/public_html && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-The `flock` guard makes the worker loop safe: a new worker starts each minute
-only if the previous one has finished, and `--stop-when-empty` lets it exit
-when the queue drains. If you prefer supervisor, run
-`php artisan queue:work --timeout=7800 --tries=1` under it instead and drop the
-second cron line.
+Job 2 — queue worker (processes the queued jobs; flock stops overlaps):
 
-## 7. First run — seed three seasons of history
+```
+cd /home/admin/web/africodeai.online/public_html && /usr/bin/flock -n storage/framework/queue.lock php artisan queue:work --stop-when-empty --timeout=7800 --tries=1 >> storage/logs/queue.log 2>&1
+```
+
+That is the entire runtime — the scheduler queues jobs at their configured
+times and the worker loop drains them.
+
+## 7. First run — pull three seasons of history
 
 ```bash
-php artisan africode:sync-fixtures --now    # fixtures for the next 14 days (~40s)
-php artisan africode:seed-history           # FBref scrape + import + profiles + predictions
+cd /home/admin/web/africodeai.online/public_html
+php artisan africode:sync-fixtures --now     # fixtures for the next 14 days (~40s)
+php artisan africode:seed-history            # FBref scrape + import + profiles + predictions
 ```
 
-**Expect `seed-history` to take a long while the first time** (hours):
-soccerdata scrapes FBref politely, one throttled request at a time, across
-three seasons of five leagues. Run it inside `screen`/`tmux` or let it ride.
-Every later nightly scrape is incremental and takes minutes.
+**`seed-history` takes hours the first time** (three seasons of polite
+scraping) — run it inside `screen`/`tmux`. Nightly runs after that are
+incremental. Player match stats backfill separately in nightly batches
+(section 9).
 
-When it finishes, the dashboard shows every upcoming fixture with a Best Bet.
+## 8. Deploying updates
 
-## 8. The nightly pipeline (all times Africa/Lagos)
+```bash
+cd /home/admin/web/africodeai.online/public_html
+git pull
+php artisan migrate --force        # applies any new migrations (no-op otherwise)
+php artisan config:cache && php artisan route:cache
+```
 
-| Time  | Job                    | What it does |
-|-------|------------------------|--------------|
-| 02:00 | `ScrapeFbrefJob`       | FBref match logs → `storage/app/pipeline/fbref_latest.json` |
-| 02:45 | `ImportFbrefDataJob`   | JSON → `match_stats`, results, referees |
-| 03:00 | `SyncFixturesJob`      | football-data.org: next 14 days + last 3 days (7s between requests) |
-| 03:15 | `RecomputeProfilesJob` | team + referee rolling profiles |
-| 03:30 | `SettlePredictionsJob` | scores pending picks, refreshes `model_accuracy` |
-| 04:00 | `ScrapePlayerStatsJob` | one batch of player match stats (new matches first, then the historical backfill) |
+`vendor/` and `public/build/` update with the pull — nothing to build.
+`database/africode.sql` in the repo is only for **fresh installs**; a live
+database is updated by `php artisan migrate --force`, never by re-importing
+the file.
+
+## 9. The nightly pipeline (all times Africa/Lagos)
+
+| Time  | Job                      | What it does |
+|-------|--------------------------|--------------|
+| 02:00 | `ScrapeFbrefJob`         | FBref team match logs → `storage/app/pipeline/fbref_latest.json` |
+| 02:45 | `ImportFbrefDataJob`     | JSON → `match_stats`, results, referees |
+| 03:00 | `SyncFixturesJob`        | football-data.org: next 14 days + last 3 days (7s between requests) |
+| 03:15 | `RecomputeProfilesJob`   | team + referee rolling profiles |
+| 03:30 | `SettlePredictionsJob`   | scores pending picks, refreshes `model_accuracy` |
+| 04:00 | `ScrapePlayerStatsJob`   | one batch of player match stats (new matches first, then backfill) |
 | 06:00 | `GeneratePredictionsJob` | runs the models for the next 7 days of fixtures |
 
 ### Player-stats backfill
 
 Player data needs one FBref match-report request per fixture, so the
 3-season history backfills in nightly batches (default 150 matches,
-`FBREF_PLAYER_BATCH_SIZE`) tracked in the `player_scrape_progress` table —
-roughly 5,400 matches ≈ a few weeks at the default pace. The app is fully
-usable throughout; player features simply cover what has landed (newest
-matches first). To backfill faster, run batches manually:
+`FBREF_PLAYER_BATCH_SIZE`) tracked in `player_scrape_progress` — roughly
+5,400 matches ≈ a few weeks at the default pace. The app is fully usable
+throughout. To go faster:
 
 ```bash
 php artisan africode:scrape-players --now --batch=400   # repeat as desired
 ```
 
 `SELECT status, COUNT(*) FROM player_scrape_progress GROUP BY status;`
-shows how far along the backfill is.
+shows progress.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 - **Footer freshness stamps** on every page show when each data source last
-  succeeded — that is the first thing to check.
-- The `pipeline_runs` table logs every job run with status and error message:
+  succeeded — check there first.
+- `pipeline_runs` logs every job with status + error:
   `SELECT * FROM pipeline_runs ORDER BY id DESC LIMIT 20;`
-- A failed FBref scrape is designed to be non-fatal: the app keeps predicting
-  from the last good data. Check `storage/logs/laravel.log` and re-run
-  `php artisan africode:scrape-fbref --now`.
-- football-data.org 403/429: check `FOOTBALLDATA_TOKEN`; the free tier allows
-  10 requests/minute and the sync sleeps 7s between calls, so quota errors
-  normally mean a bad token.
-- After editing `.env`, run `php artisan config:cache` again (or delete
-  `bootstrap/cache/config.php`).
-
-## 10. Updating the app
-
-Upload a fresh zip (minus `.env` and `storage/`), unzip over the old code,
-then `php artisan migrate --force && php artisan config:cache`. Migrations are
-additive; the database keeps its history.
+- A failed FBref scrape is non-fatal by design — the app keeps predicting
+  from the last good data. Re-run with `php artisan africode:scrape-fbref --now`.
+- football-data.org 403/429 usually means a bad `FOOTBALLDATA_TOKEN` (the
+  sync already respects the 10 req/min limit).
+- Chat usage/quota: `SELECT status, COUNT(*), SUM(gemini_requests) FROM
+  chat_logs GROUP BY status;`
+- After editing `.env`: `php artisan config:cache` again.
