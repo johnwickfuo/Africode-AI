@@ -3,6 +3,7 @@
 namespace App\Services\Chat;
 
 use App\Models\ChatLog;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -132,8 +133,8 @@ class ChatService
                     ? $exception->response?->body()
                     : null,
             ]);
-            $overloaded = $exception instanceof RequestException
-                && $exception->response?->status() === 503;
+            $overloaded = $exception instanceof ConnectionException
+                || ($exception instanceof RequestException && $exception->response?->status() === 503);
             $reply = $overloaded ? self::BUSY_REPLY : self::ERROR_REPLY;
             $status = ChatLog::STATUS_ERROR;
         }

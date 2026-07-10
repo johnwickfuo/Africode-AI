@@ -239,6 +239,25 @@ class ChatTest extends TestCase
         $this->assertSame('ok', ChatLog::first()->status);
     }
 
+    public function test_timed_out_primary_model_falls_back_immediately(): void
+    {
+        $calls = 0;
+        Http::fake(function ($request) use (&$calls) {
+            if (++$calls === 1) {
+                throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Operation timed out');
+            }
+
+            return Http::response($this->geminiText('Fallback answer.'));
+        });
+
+        $this->postJson('/api/chat', ['message' => 'hi'])
+            ->assertOk()
+            ->assertJson(['reply' => 'Fallback answer.']);
+
+        $this->assertSame(2, $calls); // no retries on the stalled model
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'gemini-2.0-flash:generateContent'));
+    }
+
     public function test_persistent_503_returns_busy_reply(): void
     {
         \Illuminate\Support\Sleep::fake();

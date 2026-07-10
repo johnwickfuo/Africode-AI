@@ -11,9 +11,11 @@ use RuntimeException;
 /**
  * Minimal client for the Gemini generateContent REST API (v1beta) with
  * function calling. One call here == one request against the daily quota,
- * so retries are limited to connection errors and 503 "model overloaded"
- * responses (which don't consume quota). If the primary model stays
- * overloaded, one attempt goes to the fallback model before giving up.
+ * so 503 "model overloaded" responses (which don't consume quota) get two
+ * quick retries; a 503 that persists, a timeout, or a connection failure
+ * then gets one attempt on the fallback model before giving up. Timeouts
+ * are deliberately not retried on the same model — a stalled endpoint that
+ * ate 30 s once will usually eat it again, and the user is waiting.
  */
 class GeminiClient
 {
@@ -45,12 +47,14 @@ class GeminiClient
 
         try {
             $response = $this->post($apiKey, $model, $payload);
-        } catch (RequestException $exception) {
-            if ($exception->response?->status() !== 503 || blank($fallback) || $fallback === $model) {
+        } catch (ConnectionException|RequestException $exception) {
+            $overloaded = $exception instanceof ConnectionException
+                || $exception->response?->status() === 503;
+            if (! $overloaded || blank($fallback) || $fallback === $model) {
                 throw $exception;
             }
-            Log::info('Gemini primary model overloaded, using fallback', [
-                'model' => $model, 'fallback' => $fallback,
+            Log::info('Gemini primary model unavailable, using fallback', [
+                'model' => $model, 'fallback' => $fallback, 'error' => $exception->getMessage(),
             ]);
             $response = $this->post($apiKey, $fallback, $payload);
         }
@@ -93,8 +97,8 @@ class GeminiClient
             ->timeout(30)
             ->retry(
                 [1500, 4000],
-                when: fn ($exception) => $exception instanceof ConnectionException
-                    || ($exception instanceof RequestException && $exception->response->status() === 503),
+                when: fn ($exception) => $exception instanceof RequestException
+                    && $exception->response->status() === 503,
                 throw: true,
             )
             ->post("{$model}:generateContent", $payload)
