@@ -40,7 +40,8 @@ class ChatTest extends TestCase
     {
         return [
             'candidates' => [['content' => ['role' => 'model', 'parts' => [
-                ['functionCall' => ['name' => $name, 'args' => $args]],
+                // Gemini 3+ attaches a signature that must be echoed back.
+                ['functionCall' => ['name' => $name, 'args' => $args], 'thoughtSignature' => 'sig-123'],
             ]]]],
             'usageMetadata' => ['promptTokenCount' => 80, 'candidatesTokenCount' => 10, 'totalTokenCount' => 90],
         ];
@@ -78,16 +79,23 @@ class ChatTest extends TestCase
             ->assertOk()
             ->assertJson(['reply' => 'Arsenal average 6.3 corners per match.']);
 
-        // Second request must carry the tool result back to Gemini.
+        // Second request must echo the call (with its thought signature —
+        // Gemini 3 rejects the round with a 400 otherwise) and carry the
+        // tool result back.
         Http::assertSentCount(2);
         Http::assertSent(function ($request) {
-            $body = $request->data();
+            $turns = collect($request->data()['contents'] ?? []);
 
-            return ! isset($body['contents']) || ! collect($body['contents'])->contains(
-                fn ($turn) => collect($turn['parts'] ?? [])->contains(
-                    fn ($part) => isset($part['functionResponse']['response']['result']['profile']),
-                ),
-            ) ? true : true;
+            $echoed = $turns->contains(fn ($turn) => collect($turn['parts'] ?? [])->contains(
+                fn ($part) => ($part['functionCall']['name'] ?? null) === 'get_team_stats'
+                    && ($part['thoughtSignature'] ?? null) === 'sig-123',
+            ));
+            $answered = $turns->contains(fn ($turn) => collect($turn['parts'] ?? [])->contains(
+                fn ($part) => isset($part['functionResponse']['response']['result']),
+            ));
+
+            // Only the second request has both; assertSent needs one match.
+            return $echoed && $answered;
         });
 
         $log = ChatLog::first();

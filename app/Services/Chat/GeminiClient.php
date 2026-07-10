@@ -67,6 +67,10 @@ class GeminiClient
                 $functionCalls[] = [
                     'name' => $part['functionCall']['name'] ?? '',
                     'args' => $part['functionCall']['args'] ?? [],
+                    // Gemini 3+ returns an opaque signature with each call
+                    // and rejects the tool-result round with a 400 unless
+                    // it is echoed back on the same part.
+                    'thought_signature' => $part['thoughtSignature'] ?? null,
                 ];
             }
         }

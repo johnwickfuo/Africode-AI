@@ -97,10 +97,17 @@ class ChatService
                 // would encode as [] and Gemini rejects that with a 400.
                 $contents[] = [
                     'role' => 'model',
-                    'parts' => array_map(fn (array $call) => ['functionCall' => [
-                        'name' => $call['name'],
-                        'args' => (object) $call['args'],
-                    ]], $result['function_calls']),
+                    'parts' => array_map(function (array $call) {
+                        $part = ['functionCall' => [
+                            'name' => $call['name'],
+                            'args' => (object) $call['args'],
+                        ]];
+                        if (filled($call['thought_signature'] ?? null)) {
+                            $part['thoughtSignature'] = $call['thought_signature'];
+                        }
+
+                        return $part;
+                    }, $result['function_calls']),
                 ];
                 $responseParts = [];
                 foreach ($result['function_calls'] as $call) {
