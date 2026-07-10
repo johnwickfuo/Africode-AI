@@ -51,6 +51,9 @@ return [
         // Wrap browser-driving scrapes in `xvfb-run` (virtual display) when
         // available — required for headed Chrome on display-less servers.
         'xvfb' => (bool) env('FBREF_XVFB', true),
+        // Proxy for FBref requests when Cloudflare blocks the server's own
+        // IP. "tor" uses a local Tor daemon (apt install tor).
+        'proxy' => env('FBREF_PROXY'),
     ],
 
     // Best Bet eligibility window (spec section 7.5).

@@ -46,6 +46,7 @@ class ScrapeFbrefJob implements ShouldQueue
                 config('africode.fbref.script_path'),
                 '--output', $output,
                 '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
+                ...(filled(config('africode.fbref.proxy')) ? ['--proxy', config('africode.fbref.proxy')] : []),
             ], withDisplay: true));
             $process->setTimeout((int) config('africode.fbref.scrape_timeout_seconds'));
             $process->run();

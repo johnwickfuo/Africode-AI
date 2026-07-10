@@ -124,6 +124,7 @@ class ScrapePlayerStatsJob implements ShouldQueue
             config('africode.fbref.player_script_path'),
             '--output', $output,
             '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
+            ...(filled(config('africode.fbref.proxy')) ? ['--proxy', config('africode.fbref.proxy')] : []),
             '--match-ids', ...$gameIds,
         ], withDisplay: true));
         $process->setTimeout((int) config('africode.fbref.player_scrape_timeout_seconds'));

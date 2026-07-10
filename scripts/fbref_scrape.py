@@ -76,14 +76,16 @@ STAT_FIELDS = (
 log = logging.getLogger("fbref_scrape")
 
 
-def make_fbref(sd, seasons, headless=False):
+def make_fbref(sd, seasons, headless=False, proxy=None):
     """FBref reader with a HEADED browser by default: Cloudflare routinely
     rejects headless Chrome ("failed CAPTCHA, IP block..."), while headed
     undetected-Chrome passes. On display-less servers seleniumbase starts an
     Xvfb virtual display automatically — the `xvfb` system package must be
-    installed. Falls back for soccerdata versions without the parameter."""
+    installed. proxy="tor" routes through a local Tor daemon (soccerdata
+    built-in) for servers whose IP Cloudflare has blocked outright.
+    Falls back for soccerdata versions without the parameters."""
     try:
-        return sd.FBref(leagues=BIG5, seasons=seasons, headless=headless)
+        return sd.FBref(leagues=BIG5, seasons=seasons, headless=headless, proxy=proxy)
     except TypeError:
         return sd.FBref(leagues=BIG5, seasons=seasons)
 
@@ -313,6 +315,8 @@ def main():
                         help="Season keys, e.g. 2324 2425 2526")
     parser.add_argument("--headless", action="store_true",
                         help="Run the browser headless (Cloudflare usually blocks this; headed + Xvfb is the default)")
+    parser.add_argument("--proxy", default=None,
+                        help='Proxy for FBref requests, e.g. "tor" (local Tor daemon on port 9050)')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
@@ -324,7 +328,7 @@ def main():
         log.error("soccerdata is not installed. Run: pip install -r scripts/requirements.txt")
         sys.exit(1)
 
-    fbref = make_fbref(sd, args.seasons, headless=args.headless)
+    fbref = make_fbref(sd, args.seasons, headless=args.headless, proxy=args.proxy)
 
     stats, failed_tables = collect_team_stats(fbref)
     matches = collect_matches(fbref, stats)
