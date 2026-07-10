@@ -262,4 +262,17 @@ shows progress.
   sync already respects the 10 req/min limit).
 - Chat usage/quota: `SELECT status, COUNT(*), SUM(gemini_requests) FROM
   chat_logs GROUP BY status;`
+- **Chatbot replies "Something went wrong" + `Chat exchange failed ... 404`
+  in `storage/logs/laravel.log`**: Google retires pinned Gemini models for
+  new API keys (e.g. `gemini-2.5-flash` returns *"no longer available to
+  new users"*). Keep `GEMINI_MODEL=gemini-flash-latest` (the rolling alias)
+  in `.env` and re-run `php artisan config:cache`.
+- **`Call to undefined function ...pcntl_signal()` repeating in
+  `storage/logs/queue.log`**: HestiaCP ships CLI PHP with the `pcntl_*`
+  functions in `disable_functions`, which kills `queue:work` instantly —
+  so no queued job (the entire nightly pipeline) ever runs. As root, edit
+  `/etc/php/8.3/cli/php.ini` (match your PHP version), remove every
+  `pcntl_*` entry from the `disable_functions` line, then verify with
+  `php -r "var_dump(function_exists('pcntl_signal'));"` → `bool(true)`.
+  Only the CLI ini is involved; leave the FPM ini alone.
 - After editing `.env`: `php artisan config:cache` again.

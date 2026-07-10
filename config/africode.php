@@ -98,7 +98,7 @@ return [
     // Gemini-powered chat assistant.
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'model' => env('GEMINI_MODEL', 'gemini-flash-latest'),
         'base_url' => 'https://generativelanguage.googleapis.com/v1beta/models/',
         // Global daily cap on Gemini API requests (every tool round counts);
         // resets at midnight Africa/Lagos.
