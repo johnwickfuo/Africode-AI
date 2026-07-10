@@ -27,8 +27,11 @@ return [
 
     // FBref via soccerdata — the statistical engine (corners, cards, shots, xG).
     'fbref' => [
-        // Tracked seasons in soccerdata key format.
-        'seasons' => ['2324', '2425', '2526'],
+        // Tracked seasons in soccerdata key format. Null (default) = rolling
+        // window computed at runtime by App\Support\Seasons::tracked(), which
+        // picks up each new season automatically in August. Pin explicitly
+        // with FBREF_SEASONS=2324,2425,2526 if ever needed.
+        'seasons' => env('FBREF_SEASONS') ? explode(',', env('FBREF_SEASONS')) : null,
         'script_path' => base_path('scripts/fbref_scrape.py'),
         'output_path' => storage_path('app/pipeline/fbref_latest.json'),
         // First full scrape of 3 seasons takes hours (polite throttling);

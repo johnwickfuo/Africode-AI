@@ -6,6 +6,7 @@ use App\Models\Fixture;
 use App\Models\PipelineRun;
 use App\Models\PlayerScrapeProgress;
 use App\Services\Fbref\ImportPlayerStatsService;
+use App\Support\Seasons;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
@@ -123,7 +124,7 @@ class ScrapePlayerStatsJob implements ShouldQueue
             config('africode.python_bin'),
             config('africode.fbref.player_script_path'),
             '--output', $output,
-            '--seasons', ...config('africode.fbref.seasons'),
+            '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
             '--match-ids', ...$gameIds,
         ]);
         $process->setTimeout((int) config('africode.fbref.player_scrape_timeout_seconds'));

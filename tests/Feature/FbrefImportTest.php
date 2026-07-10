@@ -102,6 +102,30 @@ class FbrefImportTest extends TestCase
         $this->assertSame('fbref', $homeStats->source);
     }
 
+    public function test_import_adopts_fbref_name_of_sync_created_team_instead_of_duplicating(): void
+    {
+        // A promoted side created by the fixture sync with a guessed fbref_name.
+        $league = League::where('code', 'PL')->first();
+        $norwich = \App\Models\Team::create([
+            'league_id' => $league->id, 'name' => 'Norwich City',
+            'fbref_name' => 'Norwich', 'short_name' => 'NOR',
+        ]);
+
+        // FBref's real squad name is "Norwich City".
+        $this->writeData([$this->fbrefMatch([
+            'game' => '2026-08-20 Norwich City-Arsenal',
+            'date' => '2026-08-20',
+            'kickoff' => '2026-08-20 15:00',
+            'home_team' => 'Norwich City',
+        ])]);
+
+        $summary = app(ImportFbrefDataService::class)->run();
+
+        $this->assertSame(0, $summary['teams_created'], 'must reuse the sync-created team');
+        $this->assertSame('Norwich City', $norwich->fresh()->fbref_name, 'real FBref name adopted');
+        $this->assertSame($norwich->id, Fixture::first()->home_team_id);
+    }
+
     public function test_import_auto_creates_teams_from_historical_seasons(): void
     {
         $this->writeData([$this->fbrefMatch([

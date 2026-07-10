@@ -52,7 +52,7 @@ class FixtureSyncService
      */
     public function run(): array
     {
-        $summary = ['fixtures_created' => 0, 'fixtures_updated' => 0, 'matches_skipped' => 0];
+        $summary = ['fixtures_created' => 0, 'fixtures_updated' => 0, 'matches_skipped' => 0, 'teams_created' => 0];
 
         $from = now('UTC')->subDays(self::DAYS_BACK)->startOfDay();
         $to = now('UTC')->addDays(self::DAYS_AHEAD)->endOfDay();
@@ -62,17 +62,14 @@ class FixtureSyncService
             $teams = $league->teams()->get();
 
             foreach ($matches as $match) {
-                $home = $this->resolveTeam($match['homeTeam'] ?? [], $teams);
-                $away = $this->resolveTeam($match['awayTeam'] ?? [], $teams);
+                $home = $this->resolveTeam($match['homeTeam'] ?? [], $league, $teams, $summary);
+                $away = $this->resolveTeam($match['awayTeam'] ?? [], $league, $teams, $summary);
 
                 if ($home === null || $away === null) {
                     $summary['matches_skipped']++;
-                    Log::warning('Fixture sync: could not resolve team, match skipped', [
+                    Log::warning('Fixture sync: match payload has no usable team, skipped', [
                         'league' => $league->code,
                         'match_id' => $match['id'] ?? null,
-                        'home' => $match['homeTeam']['name'] ?? null,
-                        'away' => $match['awayTeam']['name'] ?? null,
-                        'unresolved' => $home === null ? 'home' : 'away',
                     ]);
 
                     continue;
@@ -155,14 +152,36 @@ class FixtureSyncService
     }
 
     /**
-     * @param  Collection<int, Team>  $teams  the league's teams
+     * @param  Collection<int, Team>  $teams  the league's teams (created teams are appended)
      */
-    private function resolveTeam(array $apiTeam, Collection $teams): ?Team
+    private function resolveTeam(array $apiTeam, League $league, Collection $teams, array &$summary): ?Team
     {
         $team = $this->matchTeam($apiTeam, $teams);
 
         if ($team === null) {
-            return null;
+            if (blank($apiTeam['name'] ?? null)) {
+                return null;
+            }
+
+            // Unknown club — a promoted side after a season rollover. Create
+            // it so its fixtures flow immediately; fbref_name is a best guess
+            // that the FBref importer corrects on first match data.
+            $team = Team::create([
+                'league_id' => $league->id,
+                'name' => preg_replace('/\s+(A?FC|CF)$/i', '', $apiTeam['name']),
+                'fbref_name' => $apiTeam['shortName'] ?? $apiTeam['name'],
+                'short_name' => $apiTeam['tla'] ?? Str::upper(Str::substr(preg_replace('/[^A-Za-z]/', '', Str::ascii($apiTeam['name'])), 0, 3)),
+                'footballdata_id' => $apiTeam['id'] ?? null,
+                'logo_url' => $apiTeam['crest'] ?? null,
+            ]);
+            $teams->push($team);
+            $summary['teams_created']++;
+            Log::info('Fixture sync: created team not in seed (promoted side?)', [
+                'league' => $league->code,
+                'team' => $team->name,
+            ]);
+
+            return $team;
         }
 
         // Backfill ids/crest learned from the API so future runs match by id.

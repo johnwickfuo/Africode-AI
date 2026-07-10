@@ -175,17 +175,23 @@ class FixtureSyncTest extends TestCase
         $this->assertTrue(Fixture::where('footballdata_match_id', 500003)->first()->is_derby);
     }
 
-    public function test_unresolvable_team_skips_match_without_failing_sync(): void
+    public function test_unknown_team_is_created_so_promoted_sides_flow_after_rollover(): void
     {
         $this->fakeApi(['PL' => [
-            $this->match(['id' => 500007, 'homeTeam' => ['id' => 999, 'name' => 'Wanderers Nomads FC', 'shortName' => 'Nomads', 'tla' => 'NOM', 'crest' => '']]),
-            $this->match(['id' => 500008]),
+            $this->match(['id' => 500007, 'homeTeam' => [
+                'id' => 68, 'name' => 'Norwich City FC', 'shortName' => 'Norwich',
+                'tla' => 'NOR', 'crest' => 'https://crests.football-data.org/68.png',
+            ]]),
         ]]);
 
         SyncFixturesJob::dispatchSync();
 
-        $this->assertSame(0, Fixture::where('footballdata_match_id', 500007)->count());
-        $this->assertSame(1, Fixture::where('footballdata_match_id', 500008)->count());
+        $norwich = Team::where('name', 'Norwich City')->first();
+        $this->assertNotNull($norwich, 'promoted team must be auto-created');
+        $this->assertSame('NOR', $norwich->short_name);
+        $this->assertSame('Norwich', $norwich->fbref_name); // best guess until FBref data lands
+        $this->assertSame(68, $norwich->footballdata_id);
+        $this->assertSame(1, Fixture::where('footballdata_match_id', 500007)->count());
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::latest('id')->first()->status);
     }
 

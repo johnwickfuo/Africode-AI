@@ -118,7 +118,7 @@ class ImportFbrefDataService
     {
         $teams = $this->teamCache[$league->id] ??= $league->teams()->get()->keyBy('fbref_name');
 
-        $team = $teams->get($fbrefName);
+        $team = $teams->get($fbrefName) ?? $this->fuzzyMatch($teams, $fbrefName);
 
         if ($team === null) {
             $team = Team::create([
@@ -136,6 +136,31 @@ class ImportFbrefDataService
         }
 
         return $team;
+    }
+
+    /**
+     * A team created by the fixture sync (promoted side) carries a guessed
+     * fbref_name. When FBref's real squad name arrives, match it against
+     * the club's known names and adopt it — instead of creating a duplicate.
+     */
+    private function fuzzyMatch($teams, string $fbrefName): ?Team
+    {
+        $normalize = fn (string $value) => preg_replace('/[^a-z0-9]/', '', Str::ascii(Str::lower($value)));
+        $needle = $normalize($fbrefName);
+
+        foreach ($teams as $team) {
+            $candidates = [$team->name, $team->fbref_name, $team->short_name];
+            if (in_array($needle, array_map($normalize, $candidates), true)) {
+                // Adopt FBref's real squad name as the join key.
+                $this->teamCache[$team->league_id]->forget($team->fbref_name);
+                $team->update(['fbref_name' => $fbrefName]);
+                $this->teamCache[$team->league_id]->put($fbrefName, $team);
+
+                return $team;
+            }
+        }
+
+        return null;
     }
 
     private function upsertFixture(League $league, array $match, Team $home, Team $away): Fixture

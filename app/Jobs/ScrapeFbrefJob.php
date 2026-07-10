@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\PipelineRun;
+use App\Support\Seasons;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\File;
@@ -45,7 +46,7 @@ class ScrapeFbrefJob implements ShouldQueue
                 config('africode.python_bin'),
                 config('africode.fbref.script_path'),
                 '--output', $output,
-                '--seasons', ...config('africode.fbref.seasons'),
+                '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
             ]);
             $process->setTimeout((int) config('africode.fbref.scrape_timeout_seconds'));
             $process->run();
