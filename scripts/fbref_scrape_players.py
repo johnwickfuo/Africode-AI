@@ -26,7 +26,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fbref_scrape import BIG5, DEFAULT_SEASONS, find_column, flatten_columns, numeric, read_with_retry, text
+from fbref_scrape import BIG5, DEFAULT_SEASONS, find_column, flatten_columns, make_fbref, numeric, read_with_retry, text
 
 log = logging.getLogger("fbref_scrape_players")
 
@@ -83,6 +83,8 @@ def main():
     parser.add_argument("--output", required=True, help="Path of the JSON file to write")
     parser.add_argument("--seasons", nargs="+", default=DEFAULT_SEASONS)
     parser.add_argument("--match-ids", nargs="+", required=True, help="FBref game ids to scrape")
+    parser.add_argument("--headless", action="store_true",
+                        help="Run the browser headless (Cloudflare usually blocks this; headed + Xvfb is the default)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
@@ -94,7 +96,7 @@ def main():
         log.error("soccerdata is not installed. Run: pip install -r scripts/requirements.txt")
         sys.exit(1)
 
-    fbref = sd.FBref(leagues=BIG5, seasons=args.seasons)
+    fbref = make_fbref(sd, args.seasons, headless=args.headless)
 
     matches = []
     failed = []

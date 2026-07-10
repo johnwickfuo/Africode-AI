@@ -13,15 +13,18 @@ jobs are added manually in HestiaCP.
 - MySQL / MariaDB + phpMyAdmin (bundled with Hestia)
 - `git` on the server
 - Python 3.11+ with `pip`
-- **Google Chrome** — soccerdata 1.9+ scrapes FBref through a real headless
-  browser (FBref is behind Cloudflare). Install once as root:
+- **Google Chrome + Xvfb** — soccerdata 1.9+ scrapes FBref through a real
+  browser (FBref is behind Cloudflare). Cloudflare rejects *headless*
+  Chrome ("failed CAPTCHA, IP block..."), so the scraper runs the browser
+  headed inside an Xvfb virtual display. Install both once as root:
 
   ```bash
   wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-  apt install -y ./google-chrome-stable_current_amd64.deb
+  apt install -y ./google-chrome-stable_current_amd64.deb xvfb
   ```
 
-  The matching chromedriver downloads automatically on first scrape.
+  The matching chromedriver downloads automatically on first scrape, and
+  seleniumbase starts/stops the virtual display by itself.
 
 ## 1. Connect the site to the repo
 

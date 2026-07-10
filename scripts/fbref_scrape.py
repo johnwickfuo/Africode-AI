@@ -76,6 +76,18 @@ STAT_FIELDS = (
 log = logging.getLogger("fbref_scrape")
 
 
+def make_fbref(sd, seasons, headless=False):
+    """FBref reader with a HEADED browser by default: Cloudflare routinely
+    rejects headless Chrome ("failed CAPTCHA, IP block..."), while headed
+    undetected-Chrome passes. On display-less servers seleniumbase starts an
+    Xvfb virtual display automatically — the `xvfb` system package must be
+    installed. Falls back for soccerdata versions without the parameter."""
+    try:
+        return sd.FBref(leagues=BIG5, seasons=seasons, headless=headless)
+    except TypeError:
+        return sd.FBref(leagues=BIG5, seasons=seasons)
+
+
 def read_with_retry(label, reader, attempts=MAX_ATTEMPTS, backoff=BACKOFF_SECONDS):
     """Run a soccerdata read with exponential-backoff retries; None on failure."""
     for attempt in range(1, attempts + 1):
@@ -299,6 +311,8 @@ def main():
     parser.add_argument("--output", required=True, help="Path of the JSON file to write")
     parser.add_argument("--seasons", nargs="+", default=DEFAULT_SEASONS,
                         help="Season keys, e.g. 2324 2425 2526")
+    parser.add_argument("--headless", action="store_true",
+                        help="Run the browser headless (Cloudflare usually blocks this; headed + Xvfb is the default)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
@@ -310,7 +324,7 @@ def main():
         log.error("soccerdata is not installed. Run: pip install -r scripts/requirements.txt")
         sys.exit(1)
 
-    fbref = sd.FBref(leagues=BIG5, seasons=args.seasons)
+    fbref = make_fbref(sd, args.seasons, headless=args.headless)
 
     stats, failed_tables = collect_team_stats(fbref)
     matches = collect_matches(fbref, stats)
