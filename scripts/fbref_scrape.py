@@ -82,8 +82,12 @@ def make_fbref(sd, seasons, headless=False, proxy=None):
     undetected-Chrome passes. On display-less servers seleniumbase starts an
     Xvfb virtual display automatically — the `xvfb` system package must be
     installed. proxy="tor" routes through a local Tor daemon (soccerdata
-    built-in) for servers whose IP Cloudflare has blocked outright.
-    Falls back for soccerdata versions without the parameters."""
+    built-in); any other proxy URL — e.g. a residential proxy like
+    "http://user:pass@geo.iproyal.com:12321" — is passed as a dict for
+    both http and https. Falls back for soccerdata versions without the
+    parameters."""
+    if proxy and proxy != "tor":
+        proxy = {"http": proxy, "https": proxy}
     try:
         return sd.FBref(leagues=BIG5, seasons=seasons, headless=headless, proxy=proxy)
     except TypeError:
