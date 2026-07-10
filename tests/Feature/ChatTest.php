@@ -213,6 +213,38 @@ class ChatTest extends TestCase
         $this->assertEmpty(session('chat_history')); // failed turns don't pollute history
     }
 
+    public function test_overloaded_primary_model_falls_back_and_answers(): void
+    {
+        \Illuminate\Support\Sleep::fake(); // skip retry backoff delays
+
+        // Primary model 503s through all 3 attempts, fallback then answers.
+        Http::fakeSequence('generativelanguage.googleapis.com/*')
+            ->pushStatus(503)->pushStatus(503)->pushStatus(503)
+            ->push($this->geminiText('Hello from the fallback.'));
+
+        $this->postJson('/api/chat', ['message' => 'hi'])
+            ->assertOk()
+            ->assertJson(['reply' => 'Hello from the fallback.']);
+
+        Http::assertSentCount(4);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'gemini-2.0-flash:generateContent'));
+        $this->assertSame('ok', ChatLog::first()->status);
+    }
+
+    public function test_persistent_503_returns_busy_reply(): void
+    {
+        \Illuminate\Support\Sleep::fake();
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(['error' => 'overloaded'], 503)]);
+
+        $this->postJson('/api/chat', ['message' => 'hi'])
+            ->assertOk()
+            ->assertJsonPath('reply', fn ($reply) => str_contains($reply, 'busy'));
+
+        Http::assertSentCount(6); // 3 attempts on the primary + 3 on the fallback
+        $this->assertSame('error', ChatLog::first()->status);
+    }
+
     public function test_toolbox_answers_queries_from_seeded_data(): void
     {
         $toolbox = app(ChatToolbox::class);

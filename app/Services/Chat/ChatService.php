@@ -23,6 +23,8 @@ class ChatService
 
     private const ERROR_REPLY = 'Something went wrong on my side — please try again in a moment.';
 
+    private const BUSY_REPLY = 'The AI service is very busy right now — please try again in a minute.';
+
     private const SYSTEM_PROMPT = <<<'PROMPT'
         You are the Africode Football AI assistant, embedded in the Africode Football AI web app — a football statistics and match-prediction tool.
 
@@ -123,7 +125,9 @@ class ChatService
                     ? $exception->response?->body()
                     : null,
             ]);
-            $reply = self::ERROR_REPLY;
+            $overloaded = $exception instanceof RequestException
+                && $exception->response?->status() === 503;
+            $reply = $overloaded ? self::BUSY_REPLY : self::ERROR_REPLY;
             $status = ChatLog::STATUS_ERROR;
         }
 
