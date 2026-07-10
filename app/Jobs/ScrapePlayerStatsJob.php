@@ -120,13 +120,12 @@ class ScrapePlayerStatsJob implements ShouldQueue
         $output = config('africode.fbref.player_output_path');
         File::ensureDirectoryExists(dirname($output));
 
-        $process = new Process([
-            config('africode.python_bin'),
+        $process = new Process(\App\Support\Python::command([
             config('africode.fbref.player_script_path'),
             '--output', $output,
             '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
             '--match-ids', ...$gameIds,
-        ]);
+        ], withDisplay: true));
         $process->setTimeout((int) config('africode.fbref.player_scrape_timeout_seconds'));
         $process->run();
 

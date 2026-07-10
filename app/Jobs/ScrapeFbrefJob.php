@@ -42,12 +42,11 @@ class ScrapeFbrefJob implements ShouldQueue
             $output = config('africode.fbref.output_path');
             File::ensureDirectoryExists(dirname($output));
 
-            $process = new Process([
-                config('africode.python_bin'),
+            $process = new Process(\App\Support\Python::command([
                 config('africode.fbref.script_path'),
                 '--output', $output,
                 '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
-            ]);
+            ], withDisplay: true));
             $process->setTimeout((int) config('africode.fbref.scrape_timeout_seconds'));
             $process->run();
 

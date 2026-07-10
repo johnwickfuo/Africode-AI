@@ -24,7 +24,10 @@ jobs are added manually in HestiaCP.
   ```
 
   The matching chromedriver downloads automatically on first scrape, and
-  seleniumbase starts/stops the virtual display by itself.
+  the scrape jobs wrap themselves in `xvfb-run` automatically whenever the
+  binary is present (installing `xvfb` on a display-less server isn't
+  enough on its own — seleniumbase silently falls back to headless without
+  a display, and Cloudflare blocks headless).
 
 ## 1. Connect the site to the repo
 

@@ -48,6 +48,9 @@ return [
         'player_output_path' => storage_path('app/pipeline/fbref_players_latest.json'),
         'player_batch_size' => (int) env('FBREF_PLAYER_BATCH_SIZE', 150),
         'player_scrape_timeout_seconds' => 5400,
+        // Wrap browser-driving scrapes in `xvfb-run` (virtual display) when
+        // available — required for headed Chrome on display-less servers.
+        'xvfb' => (bool) env('FBREF_XVFB', true),
     ],
 
     // Best Bet eligibility window (spec section 7.5).
