@@ -49,7 +49,7 @@ class GeminiClient
             $response = $this->post($apiKey, $model, $payload);
         } catch (ConnectionException|RequestException $exception) {
             $overloaded = $exception instanceof ConnectionException
-                || $exception->response?->status() === 503;
+                || in_array($exception->response?->status(), [429, 503], true);
             if (! $overloaded || blank($fallback) || $fallback === $model) {
                 throw $exception;
             }

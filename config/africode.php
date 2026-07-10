@@ -99,9 +99,10 @@ return [
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
         'model' => env('GEMINI_MODEL', 'gemini-flash-latest'),
-        // Used (once, after retries) when the primary model returns 503
-        // "overloaded" — the free tier gets shed first under load.
-        'fallback_model' => env('GEMINI_FALLBACK_MODEL', 'gemini-2.0-flash'),
+        // Used (once) when the primary model is overloaded, rate-limited,
+        // or stalls. Must be a model the key has FREE-TIER quota for —
+        // older pinned models (gemini-2.0-*) report "limit: 0" on new keys.
+        'fallback_model' => env('GEMINI_FALLBACK_MODEL', 'gemini-flash-lite-latest'),
         'base_url' => 'https://generativelanguage.googleapis.com/v1beta/models/',
         // Global daily cap on Gemini API requests (every tool round counts);
         // resets at midnight Africa/Lagos.

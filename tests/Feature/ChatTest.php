@@ -235,7 +235,7 @@ class ChatTest extends TestCase
             ->assertJson(['reply' => 'Hello from the fallback.']);
 
         Http::assertSentCount(4);
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'gemini-2.0-flash:generateContent'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'gemini-flash-lite-latest:generateContent'));
         $this->assertSame('ok', ChatLog::first()->status);
     }
 
@@ -255,7 +255,7 @@ class ChatTest extends TestCase
             ->assertJson(['reply' => 'Fallback answer.']);
 
         $this->assertSame(2, $calls); // no retries on the stalled model
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'gemini-2.0-flash:generateContent'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'gemini-flash-lite-latest:generateContent'));
     }
 
     public function test_persistent_503_returns_busy_reply(): void

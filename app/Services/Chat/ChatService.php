@@ -134,7 +134,8 @@ class ChatService
                     : null,
             ]);
             $overloaded = $exception instanceof ConnectionException
-                || ($exception instanceof RequestException && $exception->response?->status() === 503);
+                || ($exception instanceof RequestException
+                    && in_array($exception->response?->status(), [429, 503], true));
             $reply = $overloaded ? self::BUSY_REPLY : self::ERROR_REPLY;
             $status = ChatLog::STATUS_ERROR;
         }
