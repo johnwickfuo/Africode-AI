@@ -179,16 +179,26 @@ times and the worker loop drains them.
 
 ## 7. First run — pull three seasons of history
 
+The fast, works-from-anywhere path uses football-data.co.uk's free CSVs
+(results + corners, cards, fouls, shots, SoT, referees — everything the
+models need except xG/crosses):
+
 ```bash
 cd /home/admin/web/africodeai.online/public_html
-php artisan africode:sync-fixtures --now     # fixtures for the next 14 days (~40s)
-php artisan africode:seed-history            # FBref scrape + import + profiles + predictions
+sudo -u admin php artisan africode:import-csv-stats --now      # 15 small CSVs, ~1 minute
+sudo -u admin php artisan africode:recompute-profiles --now    # team/referee profiles
+sudo -u admin php artisan africode:sync-fixtures --now         # fixtures for the next 14 days
+sudo -u admin php artisan africode:generate-predictions --now  # predictions, if fixtures exist
 ```
 
-**`seed-history` takes hours the first time** (three seasons of polite
-scraping) — run it inside `screen`/`tmux`. Nightly runs after that are
-incremental. Player match stats backfill separately in nightly batches
-(section 9).
+Optionally enrich with FBref (adds xG, crosses, possession, and player
+stats) via `africode:seed-history` — but note Cloudflare blocks FBref for
+many datacenter IPs ("failed CAPTCHA / IP block"). In that case either set
+`FBREF_PROXY` to a residential proxy URL, or run `scripts/fbref_scrape.py`
+on a home computer and upload the JSON to `storage/app/pipeline/` before
+`africode:import-fbref --now`. The FBref scrape takes hours (polite
+scraping); run it inside `screen`/`tmux`. Player match stats backfill
+separately in nightly batches (section 9) and also need FBref access.
 
 ## 8. Deploying updates
 
@@ -209,6 +219,7 @@ the file.
 | Time  | Job                      | What it does |
 |-------|--------------------------|--------------|
 | 02:00 | `ScrapeFbrefJob`         | FBref team match logs → `storage/app/pipeline/fbref_latest.json` |
+| 02:30 | `ImportCsvStatsJob`      | football-data.co.uk CSVs → results, corners/cards/shots stats, referees (never overwrites FBref rows) |
 | 02:45 | `ImportFbrefDataJob`     | JSON → `match_stats`, results, referees |
 | 03:00 | `SyncFixturesJob`        | football-data.org: next 14 days + last 3 days (7s between requests) |
 | 03:15 | `RecomputeProfilesJob`   | team + referee rolling profiles |

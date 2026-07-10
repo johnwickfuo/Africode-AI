@@ -2,6 +2,7 @@
 
 use App\Jobs\GenerateAccumulatorsJob;
 use App\Jobs\GeneratePredictionsJob;
+use App\Jobs\ImportCsvStatsJob;
 use App\Jobs\ImportFbrefDataJob;
 use App\Jobs\RecomputeProfilesJob;
 use App\Jobs\ScrapeFbrefJob;
@@ -18,6 +19,12 @@ Schedule::job(new ScrapeFbrefJob)
 
 Schedule::job(new ImportFbrefDataJob)
     ->dailyAt('02:45')
+    ->timezone('Africa/Lagos');
+
+// Free CSV stats (corners/cards/shots/referees) — works from any IP and
+// keeps stats flowing even while FBref is Cloudflare-blocked.
+Schedule::job(new ImportCsvStatsJob)
+    ->dailyAt('02:30')
     ->timezone('Africa/Lagos');
 
 Schedule::job(new SyncFixturesJob)
