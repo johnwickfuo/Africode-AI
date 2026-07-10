@@ -134,7 +134,7 @@ class ScrapePlayerStatsJob implements ShouldQueue
             throw new RuntimeException(sprintf(
                 'Player scrape exited with code %d: %s',
                 $process->getExitCode(),
-                Str::limit(trim($process->getErrorOutput()) ?: trim($process->getOutput()), 1500),
+                \App\Support\ProcessOutput::tail($process),
             ));
         }
 

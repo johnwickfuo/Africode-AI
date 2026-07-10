@@ -61,7 +61,7 @@ class GeneratePredictionsService
             throw new RuntimeException(sprintf(
                 'predict.py exited with code %d: %s',
                 $process->getExitCode(),
-                Str::limit(trim($process->getErrorOutput()) ?: trim($process->getOutput()), 1500),
+                \App\Support\ProcessOutput::tail($process),
             ));
         }
 
