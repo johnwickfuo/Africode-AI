@@ -3,6 +3,7 @@
 namespace App\Services\Chat;
 
 use App\Models\ChatLog;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -90,9 +91,14 @@ class ChatService
 
                 // Echo the model's calls back, then answer each with its
                 // tool result, exactly as the function-calling protocol wants.
+                // args must serialize as a JSON object — an empty PHP array
+                // would encode as [] and Gemini rejects that with a 400.
                 $contents[] = [
                     'role' => 'model',
-                    'parts' => array_map(fn (array $call) => ['functionCall' => $call], $result['function_calls']),
+                    'parts' => array_map(fn (array $call) => ['functionCall' => [
+                        'name' => $call['name'],
+                        'args' => (object) $call['args'],
+                    ]], $result['function_calls']),
                 ];
                 $responseParts = [];
                 foreach ($result['function_calls'] as $call) {
@@ -109,7 +115,14 @@ class ChatService
 
             $reply ??= self::FALLBACK_REPLY;
         } catch (Throwable $exception) {
-            Log::warning('Chat exchange failed', ['error' => $exception->getMessage()]);
+            Log::warning('Chat exchange failed', [
+                'error' => $exception->getMessage(),
+                // The exception message truncates the API's response body;
+                // log it in full — it names the exact rejected field.
+                'response' => $exception instanceof RequestException
+                    ? $exception->response?->body()
+                    : null,
+            ]);
             $reply = self::ERROR_REPLY;
             $status = ChatLog::STATUS_ERROR;
         }
