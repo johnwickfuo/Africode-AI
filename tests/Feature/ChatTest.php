@@ -290,6 +290,26 @@ class ChatTest extends TestCase
             'best_bet_probability' => 0.78, 'headline_text' => 'Over 9.5 corners — 78%',
         ]);
 
+        // Season totals summed from finished fixtures + match stats.
+        $finished = Fixture::create([
+            'league_id' => $arsenal->league_id, 'season' => '2025-2026',
+            'home_team_id' => $arsenal->id, 'away_team_id' => $spurs->id,
+            'kickoff_utc' => now('UTC')->subDays(3), 'status' => 'finished',
+            'home_goals' => 3, 'away_goals' => 1,
+        ]);
+        \App\Models\MatchStat::create([
+            'fixture_id' => $finished->id, 'team_id' => $arsenal->id, 'is_home' => true,
+            'goals' => 3, 'corners_for' => 7, 'yellows' => 2, 'shots_on_target' => 6,
+            'xg' => 2.4, 'xga' => 0.8, 'source' => 'fdcouk',
+        ]);
+        $teamStats = $toolbox->execute('get_team_stats', ['team' => 'Arsenal', 'season' => '2025-2026']);
+        $this->assertSame(1, $teamStats['season_totals']['played']);
+        $this->assertSame(1, $teamStats['season_totals']['wins']);
+        $this->assertSame(3, $teamStats['season_totals']['goals_for']);
+        $this->assertSame(1, $teamStats['season_totals']['goals_against']);
+        $this->assertSame(2.4, $teamStats['season_totals']['xg_for']);
+        $this->assertSame(7, $teamStats['season_totals']['corners_for']);
+
         // Fuzzy team match + fixtures with best bet.
         $fixtures = $toolbox->execute('get_fixtures', ['team' => 'arsen', 'days' => 7]);
         $this->assertSame('Over 9.5 corners — 78%', $fixtures['fixtures'][0]['best_bet']);

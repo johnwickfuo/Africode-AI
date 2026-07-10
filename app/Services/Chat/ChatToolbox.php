@@ -34,7 +34,7 @@ class ChatToolbox
         return [
             [
                 'name' => 'get_team_stats',
-                'description' => 'Rolling stat profile for a team (attack/defence strength, xG, corners, cards, fouls, shots on target averages).',
+                'description' => 'Team stats for one season: totals (matches, wins/draws/losses, goals scored and conceded, accumulated xG, corners, cards, clean sheets) plus the rolling model profile (attack/defence strength and per-match averages).',
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => [
@@ -204,16 +204,71 @@ class ChatToolbox
             ->orderByDesc('season')
             ->first();
 
+        $season = $args['season']
+            ?? Fixture::finished()
+                ->where(fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id))
+                ->orderByDesc('season')
+                ->value('season');
+
         return [
             'team' => $team->name,
             'league' => $team->league->name,
+            'season_totals' => ($season ? $this->seasonTotals($team, $season) : null)
+                ?? 'No finished matches in the data for that season.',
             'profile' => $profile?->only([
                 'season', 'matches_played', 'attack_strength', 'defence_strength',
                 'xg_for_avg', 'xg_against_avg', 'corners_for_avg', 'corners_against_avg',
                 'crosses_avg', 'cards_avg', 'fouls_committed_avg', 'fouls_drawn_avg',
                 'sot_for_avg', 'sot_against_avg', 'home_advantage_factor',
             ]) ?? 'No profile computed yet for this team.',
-            'note' => 'Averages are exponentially weighted toward recent matches.',
+            'note' => 'Profile averages are exponentially weighted toward recent matches; season_totals are plain sums over finished league matches.',
+        ];
+    }
+
+    /**
+     * Plain sums over a team's finished league matches in one season —
+     * results from the fixtures, everything else from match_stats rows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function seasonTotals(Team $team, string $season): ?array
+    {
+        $fixtures = Fixture::finished()
+            ->where('season', $season)
+            ->where(fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id))
+            ->get(['id', 'home_team_id', 'home_goals', 'away_goals']);
+
+        if ($fixtures->isEmpty()) {
+            return null;
+        }
+
+        $results = ['wins' => 0, 'draws' => 0, 'losses' => 0, 'goals_for' => 0, 'goals_against' => 0, 'clean_sheets' => 0];
+        foreach ($fixtures as $fixture) {
+            $isHome = $fixture->home_team_id === $team->id;
+            $for = $isHome ? $fixture->home_goals : $fixture->away_goals;
+            $against = $isHome ? $fixture->away_goals : $fixture->home_goals;
+            $results['goals_for'] += $for;
+            $results['goals_against'] += $against;
+            $results[$for <=> $against ? ($for > $against ? 'wins' : 'losses') : 'draws']++;
+            $results['clean_sheets'] += $against === 0 ? 1 : 0;
+        }
+
+        $stats = $team->matchStats()->whereIn('fixture_id', $fixtures->pluck('id'))->get();
+        $xgCovered = $stats->whereNotNull('xg')->count();
+
+        return [
+            'season' => $season,
+            'played' => $fixtures->count(),
+            ...$results,
+            'xg_for' => $xgCovered ? round($stats->sum('xg'), 1) : null,
+            'xg_against' => $xgCovered ? round($stats->sum('xga'), 1) : null,
+            // xG is enriched progressively (Understat backfill) — flag
+            // partial coverage so totals aren't read as full-season sums.
+            'xg_matches_covered' => $xgCovered,
+            'corners_for' => (int) $stats->sum('corners_for'),
+            'yellows' => (int) $stats->sum('yellows'),
+            'reds' => (int) $stats->sum('reds'),
+            'shots_on_target' => (int) $stats->sum('shots_on_target'),
         ];
     }
 
