@@ -83,6 +83,18 @@ return [
     // Optional single password protecting the whole app (Phase 1, no auth).
     'access_password' => env('APP_ACCESS_PASSWORD'),
 
+    // Understat — free player match data + per-match team xG (plain HTTP,
+    // reachable from datacenter IPs; the FBref-blocked fallback that keeps
+    // the chatbot's player features and the goals model's xG blend alive).
+    'understat' => [
+        'script_path' => base_path('scripts/understat_scrape.py'),
+        'output_path' => storage_path('app/pipeline/understat_latest.json'),
+        // New roster fetches per nightly run (~1.2s each). The ~5,700-match
+        // backfill drains in about two weeks at the default.
+        'batch_size' => (int) env('UNDERSTAT_BATCH_SIZE', 400),
+        'timeout_seconds' => 3600,
+    ],
+
     // Gemini-powered chat assistant.
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),

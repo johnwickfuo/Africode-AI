@@ -7,6 +7,7 @@ use App\Jobs\ImportFbrefDataJob;
 use App\Jobs\RecomputeProfilesJob;
 use App\Jobs\ScrapeFbrefJob;
 use App\Jobs\ScrapePlayerStatsJob;
+use App\Jobs\ScrapeUnderstatJob;
 use App\Jobs\SettlePredictionsJob;
 use App\Jobs\SyncFixturesJob;
 use Illuminate\Support\Facades\Schedule;
@@ -39,11 +40,19 @@ Schedule::job(new SettlePredictionsJob)
     ->dailyAt('03:30')
     ->timezone('Africa/Lagos');
 
-// One batch per night: covers new matches first (newest kickoffs first)
-// and keeps draining the 3-season historical backfill until complete.
-Schedule::job(new ScrapePlayerStatsJob)
+// Free player data + per-match team xG from understat (plain HTTP, any
+// IP): one batch per night, newest matches first, until the 3-season
+// backfill completes.
+Schedule::job(new ScrapeUnderstatJob)
     ->dailyAt('04:00')
     ->timezone('Africa/Lagos');
+
+// FBref player match stats (adds shots-on-target on top of understat).
+// Only useful when FBref is reachable, so gated on FBREF_PROXY.
+Schedule::job(new ScrapePlayerStatsJob)
+    ->dailyAt('04:30')
+    ->timezone('Africa/Lagos')
+    ->when(fn () => filled(config('africode.fbref.proxy')));
 
 Schedule::job(new GeneratePredictionsJob)
     ->dailyAt('06:00')

@@ -130,12 +130,12 @@ class CsvStatsImportService
             return null;
         }
 
-        $header = str_getcsv(array_shift($lines));
+        $header = str_getcsv(array_shift($lines), ',', '"', '\\');
 
         return collect($lines)
             ->filter(fn (string $line) => trim($line) !== '')
             ->map(function (string $line) use ($header) {
-                $values = str_getcsv($line);
+                $values = str_getcsv($line, ',', '"', '\\');
 
                 return collect($header)
                     ->mapWithKeys(fn ($column, $i) => [trim($column) => trim($values[$i] ?? '')])

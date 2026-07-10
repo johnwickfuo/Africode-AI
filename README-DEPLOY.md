@@ -186,10 +186,16 @@ models need except xG/crosses):
 ```bash
 cd /home/admin/web/africodeai.online/public_html
 sudo -u admin php artisan africode:import-csv-stats --now      # 15 small CSVs, ~1 minute
+sudo -u admin php artisan africode:scrape-understat --now --batch=800   # player data + xG, ~20 min per run
 sudo -u admin php artisan africode:recompute-profiles --now    # team/referee profiles
 sudo -u admin php artisan africode:sync-fixtures --now         # fixtures for the next 14 days
 sudo -u admin php artisan africode:generate-predictions --now  # predictions, if fixtures exist
 ```
+
+Repeat the `scrape-understat` command (each run fetches the next batch of
+match rosters, newest first, cached on disk) until it reports 0 rosters
+pending — or just let the nightly 04:00 job drain the backfill over ~2
+weeks. The app is fully usable throughout.
 
 Optionally enrich with FBref (adds xG, crosses, possession, and player
 stats) via `africode:seed-history` — but note Cloudflare blocks FBref for
@@ -224,7 +230,8 @@ the file.
 | 03:00 | `SyncFixturesJob`        | football-data.org: next 14 days + last 3 days (7s between requests) |
 | 03:15 | `RecomputeProfilesJob`   | team + referee rolling profiles |
 | 03:30 | `SettlePredictionsJob`   | scores pending picks, refreshes `model_accuracy` |
-| 04:00 | `ScrapePlayerStatsJob`   | one batch of player match stats (new matches first, then backfill) |
+| 04:00 | `ScrapeUnderstatJob`     | understat.com player match data + per-match team xG (free, any IP; one batch/night, newest first) |
+| 04:30 | `ScrapePlayerStatsJob`   | FBref player stats (adds shots-on-target) — only runs when `FBREF_PROXY` is set |
 | 06:00 | `GeneratePredictionsJob` | runs the models for the next 7 days of fixtures |
 | 06:30 | `GenerateAccumulatorsJob` | builds the daily 3x-10000x accumulator set from the fresh predictions |
 
