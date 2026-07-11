@@ -102,6 +102,22 @@ class FbrefImportTest extends TestCase
         $this->assertSame('fbref', $homeStats->source);
     }
 
+    public function test_import_parses_real_fbref_kickoff_format(): void
+    {
+        // Exact shape from a real scrape: pandas midnight-stamped date glued
+        // to FBref's "local (venue)" time — crashed the importer in prod.
+        $this->writeData([$this->fbrefMatch([
+            'date' => '2023-08-12 00:00:00',
+            'kickoff' => '2023-08-12 00:00:00 12:30 (13:30)',
+            'season' => '2324',
+        ])]);
+
+        $summary = app(ImportFbrefDataService::class)->run();
+
+        $this->assertSame(1, $summary['fixtures_created']);
+        $this->assertSame('2023-08-12 12:30:00', Fixture::first()->kickoff_utc->toDateTimeString());
+    }
+
     public function test_import_adopts_fbref_name_of_sync_created_team_instead_of_duplicating(): void
     {
         // A promoted side created by the fixture sync with a guessed fbref_name.

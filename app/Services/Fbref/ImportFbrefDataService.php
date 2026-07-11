@@ -177,7 +177,7 @@ class ImportFbrefDataService
         if (! $fixture->exists) {
             // FBref kickoff is venue-local; stored as-is (~UTC). Only used for
             // historical rows — football-data.org owns current-season times.
-            $fixture->kickoff_utc = Carbon::parse($match['kickoff'] ?? $match['date'], 'UTC');
+            $fixture->kickoff_utc = $this->parseKickoff($match);
         }
 
         $fixture->status = Fixture::STATUS_FINISHED;
@@ -194,6 +194,28 @@ class ImportFbrefDataService
         $fixture->save();
 
         return $fixture;
+    }
+
+    /**
+     * Real FBref exports glue pandas' midnight-stamped date to a venue-time
+     * kickoff — "2023-08-12 00:00:00 12:30 (13:30)" — which no date parser
+     * accepts. Strip the parenthetical, and when plain parsing still fails,
+     * recompose from the date plus the last time present (the actual kickoff).
+     */
+    private function parseKickoff(array $match): Carbon
+    {
+        $raw = trim(preg_replace('/\([^)]*\)/', '', (string) ($match['kickoff'] ?? $match['date'] ?? '')));
+
+        try {
+            return Carbon::parse($raw, 'UTC');
+        } catch (\Throwable) {
+            if (preg_match('/\d{4}-\d{2}-\d{2}/', $raw, $date) !== 1) {
+                throw new RuntimeException("Unparseable FBref kickoff '{$raw}'.");
+            }
+            preg_match_all('/\d{1,2}:\d{2}(?::\d{2})?/', $raw, $times);
+
+            return Carbon::parse($date[0].' '.(end($times[0]) ?: '00:00'), 'UTC');
+        }
     }
 
     private function upsertMatchStats(Fixture $fixture, Team $team, array $stats, bool $isHome): int

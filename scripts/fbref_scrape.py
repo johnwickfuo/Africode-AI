@@ -286,8 +286,11 @@ def collect_matches(fbref, stats):
         home_raw = stats.get((league, season, game, home_team), {})
         away_raw = stats.get((league, season, game, away_team), {})
 
-        date = text(value(row, "date"))
-        kickoff_time = text(value(row, "time"))
+        # pandas serializes the date as "2023-08-12 00:00:00" and FBref's
+        # time column reads "12:30 (13:30)" (venue time in parens) — keep
+        # only the date part and the first plain time.
+        date = text(value(row, "date")).split(" ")[0]
+        kickoff_time = re.sub(r"\(.*?\)", "", text(value(row, "time")) or "").strip()
 
         matches.append({
             "league": league,
