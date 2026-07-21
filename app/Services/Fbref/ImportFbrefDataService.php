@@ -9,6 +9,7 @@ use App\Models\Referee;
 use App\Models\Rivalry;
 use App\Models\Team;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -40,7 +41,7 @@ class ImportFbrefDataService
         'yellows', 'reds', 'possession',
     ];
 
-    /** @var array<int, \Illuminate\Support\Collection<string, Team>> league id => teams keyed by fbref_name */
+    /** @var array<int, Collection<string, Team>> league id => teams keyed by fbref_name */
     private array $teamCache = [];
 
     /**

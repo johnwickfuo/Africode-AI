@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
 class FixtureSyncService
 {
     public const DAYS_BACK = 3;
+
     public const DAYS_AHEAD = 14;
 
     /**
@@ -43,9 +44,7 @@ class FixtureSyncService
         'bayern munchen' => 'Bayern Munich',
     ];
 
-    public function __construct(private FootballDataClient $client)
-    {
-    }
+    public function __construct(private FootballDataClient $client) {}
 
     /**
      * @return array{fixtures_created: int, fixtures_updated: int, matches_skipped: int}

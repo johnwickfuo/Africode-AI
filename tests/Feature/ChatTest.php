@@ -4,14 +4,17 @@ namespace Tests\Feature;
 
 use App\Models\ChatLog;
 use App\Models\Fixture;
+use App\Models\MatchStat;
 use App\Models\Prediction;
 use App\Models\Team;
 use App\Models\TeamProfile;
 use App\Services\Chat\ChatToolbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 class ChatTest extends TestCase
@@ -223,7 +226,7 @@ class ChatTest extends TestCase
 
     public function test_overloaded_primary_model_falls_back_and_answers(): void
     {
-        \Illuminate\Support\Sleep::fake(); // skip retry backoff delays
+        Sleep::fake(); // skip retry backoff delays
 
         // Primary model 503s through all 3 attempts, fallback then answers.
         Http::fakeSequence('generativelanguage.googleapis.com/*')
@@ -244,7 +247,7 @@ class ChatTest extends TestCase
         $calls = 0;
         Http::fake(function ($request) use (&$calls) {
             if (++$calls === 1) {
-                throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Operation timed out');
+                throw new ConnectionException('cURL error 28: Operation timed out');
             }
 
             return Http::response($this->geminiText('Fallback answer.'));
@@ -260,7 +263,7 @@ class ChatTest extends TestCase
 
     public function test_persistent_503_returns_busy_reply(): void
     {
-        \Illuminate\Support\Sleep::fake();
+        Sleep::fake();
 
         Http::fake(['generativelanguage.googleapis.com/*' => Http::response(['error' => 'overloaded'], 503)]);
 
@@ -297,7 +300,7 @@ class ChatTest extends TestCase
             'kickoff_utc' => now('UTC')->subDays(3), 'status' => 'finished',
             'home_goals' => 3, 'away_goals' => 1,
         ]);
-        \App\Models\MatchStat::create([
+        MatchStat::create([
             'fixture_id' => $finished->id, 'team_id' => $arsenal->id, 'is_home' => true,
             'goals' => 3, 'corners_for' => 7, 'yellows' => 2, 'shots_on_target' => 6,
             'xg' => 2.4, 'xga' => 0.8, 'source' => 'fdcouk',

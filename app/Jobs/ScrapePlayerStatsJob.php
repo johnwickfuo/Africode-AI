@@ -6,6 +6,8 @@ use App\Models\Fixture;
 use App\Models\PipelineRun;
 use App\Models\PlayerScrapeProgress;
 use App\Services\Fbref\ImportPlayerStatsService;
+use App\Support\ProcessOutput;
+use App\Support\Python;
 use App\Support\Seasons;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -120,7 +122,7 @@ class ScrapePlayerStatsJob implements ShouldQueue
         $output = config('africode.fbref.player_output_path');
         File::ensureDirectoryExists(dirname($output));
 
-        $process = new Process(\App\Support\Python::command([
+        $process = new Process(Python::command([
             config('africode.fbref.player_script_path'),
             '--output', $output,
             '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
@@ -134,7 +136,7 @@ class ScrapePlayerStatsJob implements ShouldQueue
             throw new RuntimeException(sprintf(
                 'Player scrape exited with code %d: %s',
                 $process->getExitCode(),
-                \App\Support\ProcessOutput::tail($process),
+                ProcessOutput::tail($process),
             ));
         }
 

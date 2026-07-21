@@ -7,10 +7,10 @@ use App\Models\MatchStat;
 use App\Models\Prediction;
 use App\Models\PredictionMarket;
 use App\Models\TeamProfile;
+use App\Support\ProcessOutput;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -61,7 +61,7 @@ class GeneratePredictionsService
             throw new RuntimeException(sprintf(
                 'predict.py exited with code %d: %s',
                 $process->getExitCode(),
-                \App\Support\ProcessOutput::tail($process),
+                ProcessOutput::tail($process),
             ));
         }
 

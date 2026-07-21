@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Models\PipelineRun;
 use App\Services\Understat\ImportUnderstatService;
+use App\Support\ProcessOutput;
+use App\Support\Python;
 use App\Support\Seasons;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -37,7 +39,7 @@ class ScrapeUnderstatJob implements ShouldQueue
             $output = config('africode.understat.output_path');
             File::ensureDirectoryExists(dirname($output));
 
-            $process = new Process(\App\Support\Python::command([
+            $process = new Process(Python::command([
                 config('africode.understat.script_path'),
                 '--output', $output,
                 '--seasons', ...(config('africode.fbref.seasons') ?? Seasons::tracked()),
@@ -50,7 +52,7 @@ class ScrapeUnderstatJob implements ShouldQueue
                 throw new RuntimeException(sprintf(
                     'Understat scrape exited with code %d: %s',
                     $process->getExitCode(),
-                    \App\Support\ProcessOutput::tail($process),
+                    ProcessOutput::tail($process),
                 ));
             }
 

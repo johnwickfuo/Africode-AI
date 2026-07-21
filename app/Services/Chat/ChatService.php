@@ -41,8 +41,7 @@ class ChatService
     public function __construct(
         private GeminiClient $gemini,
         private ChatToolbox $toolbox,
-    ) {
-    }
+    ) {}
 
     /**
      * Whether the global daily Gemini budget is already spent.

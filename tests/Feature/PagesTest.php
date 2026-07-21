@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Fixture;
+use App\Models\PipelineRun;
+use App\Models\Player;
+use App\Models\PlayerMatchStat;
 use App\Models\Prediction;
 use App\Models\PredictionMarket;
 use App\Models\Team;
@@ -114,7 +117,7 @@ class PagesTest extends TestCase
         ]);
 
         // Key players: two Arsenal appearances this season.
-        $saka = \App\Models\Player::create([
+        $saka = Player::create([
             'team_id' => $fixture->home_team_id, 'name' => 'Bukayo Saka',
             'nationality' => 'ENG', 'position' => 'RW', 'last_seen_at' => now(),
         ]);
@@ -125,7 +128,7 @@ class PagesTest extends TestCase
             'kickoff_utc' => now('UTC')->subDays(10),
             'status' => Fixture::STATUS_FINISHED, 'home_goals' => 2, 'away_goals' => 0,
         ]);
-        \App\Models\PlayerMatchStat::create([
+        PlayerMatchStat::create([
             'player_id' => $saka->id, 'fixture_id' => $finished->id,
             'team_id' => $fixture->home_team_id, 'minutes' => 90,
             'goals' => 2, 'assists' => 1, 'yellows' => 1, 'reds' => 0,
@@ -218,7 +221,7 @@ class PagesTest extends TestCase
 
     public function test_pipeline_freshness_is_shared_with_every_page(): void
     {
-        \App\Models\PipelineRun::create([
+        PipelineRun::create([
             'job_name' => 'SyncFixturesJob',
             'started_at' => now()->subMinutes(10),
             'finished_at' => now()->subMinutes(9),

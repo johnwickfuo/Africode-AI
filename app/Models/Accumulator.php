@@ -8,8 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Accumulator extends Model
 {
     public const OUTCOME_PENDING = 'pending';
+
     public const OUTCOME_WON = 'won';
+
     public const OUTCOME_LOST = 'lost';
+
     public const OUTCOME_VOID = 'void';
 
     protected $fillable = [

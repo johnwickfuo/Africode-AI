@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class ChatLog extends Model
 {
     public const STATUS_OK = 'ok';
+
     public const STATUS_LIMITED = 'limited';
+
     public const STATUS_CAPPED = 'capped';
+
     public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_ERROR = 'error';
 
     protected $fillable = [

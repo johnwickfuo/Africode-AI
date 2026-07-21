@@ -8,9 +8,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class League extends Model
 {
     public const CODE_PREMIER_LEAGUE = 'PL';
+
     public const CODE_LA_LIGA = 'PD';
+
     public const CODE_SERIE_A = 'SA';
+
     public const CODE_BUNDESLIGA = 'BL1';
+
     public const CODE_LIGUE_1 = 'FL1';
 
     protected $fillable = [

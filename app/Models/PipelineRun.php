@@ -10,7 +10,9 @@ use Throwable;
 class PipelineRun extends Model
 {
     public const STATUS_RUNNING = 'running';
+
     public const STATUS_SUCCESS = 'success';
+
     public const STATUS_FAILED = 'failed';
 
     protected $fillable = [

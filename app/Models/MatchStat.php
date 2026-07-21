@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MatchStat extends Model
 {
     public const SOURCE_FBREF = 'fbref';
+
     public const SOURCE_APIFOOTBALL = 'apifootball';
 
     protected $fillable = [

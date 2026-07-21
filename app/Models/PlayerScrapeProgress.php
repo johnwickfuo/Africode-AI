@@ -8,7 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerScrapeProgress extends Model
 {
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_DONE = 'done';
+
     public const STATUS_FAILED = 'failed';
 
     public const MAX_ATTEMPTS = 3;

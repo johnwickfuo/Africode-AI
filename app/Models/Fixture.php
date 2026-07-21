@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Fixture extends Model
 {
     public const STATUS_SCHEDULED = 'scheduled';
+
     public const STATUS_FINISHED = 'finished';
+
     public const STATUS_POSTPONED = 'postponed';
 
     protected $fillable = [

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Accumulator;
 use App\Models\AccumulatorLeg;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -69,7 +70,7 @@ class AccumulatorsController extends Controller
 
         return Inertia::render('Accumulators', [
             'generated_at' => $latestGeneratedAt !== null
-                ? \Illuminate\Support\Carbon::parse($latestGeneratedAt)->timezone($displayTz)->isoFormat('D MMM, HH:mm')
+                ? Carbon::parse($latestGeneratedAt)->timezone($displayTz)->isoFormat('D MMM, HH:mm')
                 : null,
             'tiers' => $tiers,
             'record' => $record,

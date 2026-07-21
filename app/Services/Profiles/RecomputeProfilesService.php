@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Log;
 class RecomputeProfilesService
 {
     public const HALF_LIFE_MATCHES = 8;
+
     public const XG_BLEND_WEIGHT = 0.7;
 
     /** Minimum home and away samples before a home-advantage factor is stored. */

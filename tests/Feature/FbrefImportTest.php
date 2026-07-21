@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Jobs\ImportFbrefDataJob;
-use App\Jobs\ScrapeFbrefJob;
 use App\Models\Fixture;
 use App\Models\League;
 use App\Models\MatchStat;
@@ -122,7 +121,7 @@ class FbrefImportTest extends TestCase
     {
         // A promoted side created by the fixture sync with a guessed fbref_name.
         $league = League::where('code', 'PL')->first();
-        $norwich = \App\Models\Team::create([
+        $norwich = Team::create([
             'league_id' => $league->id, 'name' => 'Norwich City',
             'fbref_name' => 'Norwich', 'short_name' => 'NOR',
         ]);
