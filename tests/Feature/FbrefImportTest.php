@@ -101,6 +101,37 @@ class FbrefImportTest extends TestCase
         $this->assertSame('fbref', $homeStats->source);
     }
 
+    public function test_import_without_xg_keeps_existing_enriched_xg(): void
+    {
+        // First import: CSV-style row later enriched with Understat xG.
+        $league = League::where('code', 'PL')->first();
+        $arsenal = \App\Models\Team::where('name', 'Arsenal')->first();
+        $spurs = \App\Models\Team::where('name', 'Tottenham Hotspur')->first();
+        $fixture = Fixture::create([
+            'league_id' => $league->id, 'season' => '2025-2026',
+            'home_team_id' => $arsenal->id, 'away_team_id' => $spurs->id,
+            'kickoff_utc' => '2025-08-16 16:30:00', 'status' => Fixture::STATUS_FINISHED,
+            'home_goals' => 2, 'away_goals' => 0,
+        ]);
+        MatchStat::create([
+            'fixture_id' => $fixture->id, 'team_id' => $arsenal->id, 'is_home' => true,
+            'goals' => 2, 'xg' => 1.93, 'xga' => 0.49, 'source' => 'fdcouk',
+        ]);
+
+        // FBref scrape for the same match arrives WITHOUT xG (common on Tor
+        // runs) — it must take over the row without nulling the xG out.
+        $match = $this->fbrefMatch();
+        $match['home']['xg'] = null;
+        $match['home']['xga'] = null;
+        $this->writeData([$match]);
+        app(ImportFbrefDataService::class)->run();
+
+        $row = MatchStat::where('team_id', $arsenal->id)->first();
+        $this->assertSame('fbref', $row->source);
+        $this->assertSame(1.93, $row->xg, 'enriched xG survives an xG-less FBref import');
+        $this->assertSame(8, $row->corners_for, 'FBref stats still applied');
+    }
+
     public function test_import_parses_real_fbref_kickoff_format(): void
     {
         // Exact shape from a real scrape: pandas midnight-stamped date glued

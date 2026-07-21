@@ -124,7 +124,9 @@ class ImportUnderstatService
         $stats = MatchStat::where('fixture_id', $fixture->id)->get();
 
         foreach ($stats as $stat) {
-            if ($stat->source === MatchStat::SOURCE_FBREF) {
+            // Never degrade an FBref row that has its own xG — but an FBref
+            // row whose xG came back empty is a gap Understat should fill.
+            if ($stat->source === MatchStat::SOURCE_FBREF && $stat->xg !== null) {
                 continue;
             }
             $isHome = $stat->team_id === $fixture->home_team_id;

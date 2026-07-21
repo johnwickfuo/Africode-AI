@@ -221,15 +221,17 @@ class ImportFbrefDataService
 
     private function upsertMatchStats(Fixture $fixture, Team $team, array $stats, bool $isHome): int
     {
-        $attributes = ['is_home' => $isHome, 'source' => MatchStat::SOURCE_FBREF];
-        foreach (self::STAT_FIELDS as $field) {
-            $attributes[$field] = $stats[$field] ?? null;
-        }
+        $row = MatchStat::firstOrNew(['fixture_id' => $fixture->id, 'team_id' => $team->id]);
 
-        MatchStat::updateOrCreate(
-            ['fixture_id' => $fixture->id, 'team_id' => $team->id],
-            $attributes,
-        );
+        $row->is_home = $isHome;
+        $row->source = MatchStat::SOURCE_FBREF;
+        foreach (self::STAT_FIELDS as $field) {
+            // FBref values win when present, but a scrape without a stat
+            // (xG is often missing) must not null out a value another
+            // source (CSV goals, Understat xG) already provided.
+            $row->{$field} = $stats[$field] ?? $row->{$field};
+        }
+        $row->save();
 
         return 1;
     }

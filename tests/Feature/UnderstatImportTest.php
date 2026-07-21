@@ -148,6 +148,28 @@ class UnderstatImportTest extends TestCase
             'name-only lookup must reuse the FBref-created player, not duplicate it');
     }
 
+    public function test_fills_xg_gap_on_fbref_row_without_xg(): void
+    {
+        $arsenal = $this->team('Arsenal');
+        $spurs = $this->team('Tottenham Hotspur');
+        $fixture = $this->fixtureFor($arsenal, $spurs);
+
+        // FBref row whose scrape carried no xG — the gap Understat must fill.
+        MatchStat::create([
+            'fixture_id' => $fixture->id, 'team_id' => $arsenal->id, 'is_home' => true,
+            'goals' => 2, 'corners_for' => 8, 'source' => 'fbref',
+        ]);
+
+        $this->writeData([$this->understatMatch(['players' => []])]);
+        $summary = app(ImportUnderstatService::class)->run($this->dataPath);
+
+        $row = MatchStat::where('team_id', $arsenal->id)->first();
+        $this->assertSame(1.93, $row->xg, 'empty FBref xG enriched from Understat');
+        $this->assertSame(8, $row->corners_for, 'FBref stats untouched');
+        $this->assertSame('fbref', $row->source);
+        $this->assertSame(1, $summary['xg_enriched']);
+    }
+
     public function test_leipzig_alias_and_unknown_fixture_skip(): void
     {
         $leipzig = $this->team('RB Leipzig');
