@@ -59,6 +59,12 @@ class ImportUnderstatService
             throw new RuntimeException("Understat data file not found at {$path}.");
         }
 
+        // The full-history file is ~26 MB of JSON that decodes to several
+        // hundred MB of PHP arrays — beyond typical 256 MB CLI limits.
+        if ((int) ini_get('memory_limit') !== -1) {
+            ini_set('memory_limit', '1024M');
+        }
+
         $payload = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
 
         $summary = [
