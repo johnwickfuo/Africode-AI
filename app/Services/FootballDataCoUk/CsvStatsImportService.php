@@ -3,6 +3,7 @@
 namespace App\Services\FootballDataCoUk;
 
 use App\Models\Fixture;
+use App\Models\FixtureOdds;
 use App\Models\League;
 use App\Models\MatchStat;
 use App\Models\Referee;
@@ -181,6 +182,7 @@ class CsvStatsImportService
 
             $this->upsertStats($fixture, $home, true, $row, $summary);
             $this->upsertStats($fixture, $away, false, $row, $summary);
+            $this->upsertOdds($fixture, $row);
         }
     }
 
@@ -217,6 +219,43 @@ class CsvStatsImportService
         );
 
         $summary['stats_rows']++;
+    }
+
+    /**
+     * The results CSVs carry the odds the market closed at — kept for
+     * "did the model beat the market" analysis. Market average preferred,
+     * Bet365 fallback; existing odds rows (e.g. from the pre-match import)
+     * are refreshed with these closing numbers.
+     */
+    private function upsertOdds(Fixture $fixture, array $row): void
+    {
+        $pick = function (array $columns) use ($row): ?float {
+            foreach ($columns as $column) {
+                $value = $row[$column] ?? null;
+                if (is_numeric($value) && (float) $value > 1.0) {
+                    return (float) $value;
+                }
+            }
+
+            return null;
+        };
+
+        $odds = array_filter([
+            'home_odds' => $pick(['AvgH', 'B365H']),
+            'draw_odds' => $pick(['AvgD', 'B365D']),
+            'away_odds' => $pick(['AvgA', 'B365A']),
+            'over25_odds' => $pick(['Avg>2.5', 'B365>2.5']),
+            'under25_odds' => $pick(['Avg<2.5', 'B365<2.5']),
+        ], fn ($value) => $value !== null);
+
+        if (! isset($odds['home_odds'], $odds['draw_odds'], $odds['away_odds'])) {
+            return; // incomplete 1X2 — not worth a row
+        }
+
+        FixtureOdds::updateOrCreate(
+            ['fixture_id' => $fixture->id],
+            $odds + ['source' => 'fdcouk', 'fetched_at' => now()],
+        );
     }
 
     private function resolveTeam(League $league, string $csvName, array &$summary): Team

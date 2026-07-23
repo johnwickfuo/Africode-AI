@@ -10,6 +10,7 @@ use App\Models\PredictionMarket;
 use App\Models\Referee;
 use App\Models\Team;
 use App\Models\TeamProfile;
+use App\Services\Odds\ValueBets;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -58,7 +59,7 @@ class ChatToolbox
             ],
             [
                 'name' => 'get_predictions',
-                'description' => "Full market-by-market prediction for a team's next fixture (goals, corners, cards, shots on target, BTTS) including the Best Bet.",
+                'description' => "Full market-by-market prediction for a team's next fixture (match result 1X2, goals, corners, cards, shots on target, BTTS) including the Best Bet, plus bookmaker odds and the model's value edge vs the market when available.",
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => [
@@ -355,6 +356,8 @@ class ChatToolbox
             return ['result' => "{$fixture->homeTeam->name} v {$fixture->awayTeam->name} has no prediction yet (generated daily at 06:00 for fixtures within 7 days)."];
         }
 
+        $valueBets = app(ValueBets::class)->compare($prediction, $fixture->odds);
+
         return [
             'fixture' => "{$fixture->homeTeam->name} v {$fixture->awayTeam->name}",
             'kickoff' => $fixture->kickoff_utc->timezone(config('africode.display_timezone'))->format('D j M H:i'),
@@ -365,7 +368,8 @@ class ChatToolbox
                 'pick' => trim(($market->line !== null ? "{$market->direction} {$market->line}" : $market->direction)),
                 'probability' => (float) $market->probability,
             ])->all(),
-            'note' => 'Probabilities are model estimates, not guarantees.',
+            'value_vs_market' => $valueBets === [] ? 'No bookmaker odds available for this fixture yet.' : $valueBets,
+            'note' => 'Probabilities are model estimates, not guarantees. A positive edge means the model rates the pick higher than the bookmaker market does.',
         ];
     }
 

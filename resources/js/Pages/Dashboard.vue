@@ -92,6 +92,13 @@ const confidence = (probability) => {
                                     >
                                         DERBY
                                     </span>
+                                    <span
+                                        v-if="fixture.value"
+                                        class="rounded bg-sky-500/15 px-2 py-0.5 font-bold text-sky-400"
+                                        :title="`Model edge +${(fixture.value.edge * 100).toFixed(0)}% vs the market`"
+                                    >
+                                        VALUE +{{ (fixture.value.edge * 100).toFixed(0) }}%
+                                    </span>
                                 </span>
                                 <span class="font-mono font-semibold text-slate-300">
                                     {{ fixture.kickoff_time }}

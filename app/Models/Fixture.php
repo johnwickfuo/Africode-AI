@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Fixture extends Model
 {
@@ -67,6 +68,11 @@ class Fixture extends Model
     public function predictions(): HasMany
     {
         return $this->hasMany(Prediction::class);
+    }
+
+    public function odds(): HasOne
+    {
+        return $this->hasOne(FixtureOdds::class);
     }
 
     public function scopeUpcoming(Builder $query): Builder

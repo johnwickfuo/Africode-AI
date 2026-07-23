@@ -4,6 +4,7 @@ use App\Jobs\GenerateAccumulatorsJob;
 use App\Jobs\GeneratePredictionsJob;
 use App\Jobs\ImportCsvStatsJob;
 use App\Jobs\ImportFbrefDataJob;
+use App\Jobs\ImportOddsJob;
 use App\Jobs\RecomputeProfilesJob;
 use App\Jobs\ScrapeFbrefJob;
 use App\Jobs\ScrapePlayerStatsJob;
@@ -53,6 +54,12 @@ Schedule::job(new ScrapePlayerStatsJob)
     ->dailyAt('04:30')
     ->timezone('Africa/Lagos')
     ->when(fn () => filled(config('africode.fbref.proxy')));
+
+// Bookmaker odds for upcoming fixtures (free fixtures.csv) — fetched just
+// before predictions so the value-bet comparison uses fresh prices.
+Schedule::job(new ImportOddsJob)
+    ->dailyAt('05:45')
+    ->timezone('Africa/Lagos');
 
 Schedule::job(new GeneratePredictionsJob)
     ->dailyAt('06:00')

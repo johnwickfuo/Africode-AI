@@ -68,10 +68,15 @@ const gapClass = (gap) => {
                     <p class="mt-1 text-2xl font-bold">{{ stats.total_settled }}</p>
                     <p class="text-xs text-slate-400">across all markets</p>
                 </div>
-                <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Markets tracked</p>
-                    <p class="mt-1 text-2xl font-bold">{{ stats.markets.length }}</p>
-                    <p class="text-xs text-slate-400">with settled picks</p>
+                <div
+                    class="rounded-xl border border-slate-800 bg-slate-900 p-4"
+                    title="Mean squared error of claimed probabilities. Lower is better: perfection 0, coin-flipping 0.25. Unlike hit rate, overconfidence is punished."
+                >
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Brier score</p>
+                    <p class="mt-1 text-2xl font-bold">{{ stats.scores.brier ?? '—' }}</p>
+                    <p class="text-xs text-slate-400">
+                        log-loss {{ stats.scores.log_loss ?? '—' }} · lower is better
+                    </p>
                 </div>
             </div>
 
@@ -173,7 +178,8 @@ const gapClass = (gap) => {
                             <th class="px-4 py-2.5 text-left font-semibold">Model</th>
                             <th class="px-3 py-2.5 text-right font-semibold">Settled</th>
                             <th class="px-3 py-2.5 text-right font-semibold">Claimed</th>
-                            <th class="px-4 py-2.5 text-right font-semibold">Hit rate</th>
+                            <th class="px-3 py-2.5 text-right font-semibold">Hit rate</th>
+                            <th class="px-4 py-2.5 text-right font-semibold" title="Lower is better">Brier</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -194,9 +200,10 @@ const gapClass = (gap) => {
                             </td>
                             <td class="px-3 py-2 text-right font-mono text-slate-300">{{ model.total }}</td>
                             <td class="px-3 py-2 text-right font-mono text-slate-300">{{ pct(model.avg_probability) }}</td>
-                            <td class="px-4 py-2 text-right font-mono font-semibold text-slate-100">
+                            <td class="px-3 py-2 text-right font-mono font-semibold text-slate-100">
                                 {{ pct(model.hit_rate) }}
                             </td>
+                            <td class="px-4 py-2 text-right font-mono text-slate-300">{{ model.brier }}</td>
                         </tr>
                     </tbody>
                 </table>

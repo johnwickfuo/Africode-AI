@@ -8,6 +8,7 @@ use App\Models\Prediction;
 use App\Models\PredictionMarket;
 use App\Models\TeamProfile;
 use App\Support\ProcessOutput;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -92,6 +93,12 @@ class GeneratePredictionsService
                 'league_id' => $fixture->league_id,
                 'kickoff_utc' => $fixture->kickoff_utc->toIso8601String(),
                 'is_derby' => $fixture->is_derby,
+                // Pre-match form for the challenger, from the same history
+                // walk that produced the training rows.
+                'form' => array_combine(
+                    ['home_ppg5', 'away_ppg5', 'home_rest', 'away_rest'],
+                    $this->formFeatures($fixture->home_team_id, $fixture->away_team_id, $fixture->kickoff_utc),
+                ),
                 'referee' => $fixture->referee?->only([
                     'name', 'matches_officiated', 'avg_yellows_per_match',
                     'avg_reds_per_match', 'avg_fouls_per_match',
@@ -107,22 +114,51 @@ class GeneratePredictionsService
         $profile = TeamProfile::where('team_id', $teamId)->where('season', $fixture->season)->first()
             ?? TeamProfile::where('team_id', $teamId)->orderByDesc('season')->first();
 
+        $prior = config('africode.priors.promoted');
+
+        // A club with no profile history at all is a promoted side: without
+        // a prior it would be skipped until several matchdays in. Clubs
+        // whose only history is this season blend observation with the
+        // prior while matches are few; established clubs (any earlier
+        // season on record) are untouched — their own past is the better
+        // prior and the profile recompute already uses it.
+        $isNewcomer = $profile === null
+            || ($profile->season === $fixture->season
+                && TeamProfile::where('team_id', $teamId)->where('season', '<', $fixture->season)->doesntExist());
+
+        $matches = $profile?->matches_played ?? 0;
+        $weight = $isNewcomer
+            ? $matches / ($matches + (int) config('africode.priors.blend_matches'))
+            : 1.0;
+
+        $value = function (string $key) use ($profile, $prior, $isNewcomer, $weight) {
+            $observed = $profile?->{$key};
+            if (! $isNewcomer) {
+                return $observed;
+            }
+            if ($observed === null) {
+                return $prior[$key];
+            }
+
+            return round($weight * (float) $observed + (1 - $weight) * $prior[$key], 4);
+        };
+
         return [
             'team_id' => $teamId,
             'name' => $name,
-            'matches_played' => $profile?->matches_played ?? 0,
-            'attack_strength' => $profile?->attack_strength,
-            'defence_strength' => $profile?->defence_strength,
-            'home_advantage_factor' => $profile?->home_advantage_factor,
-            'xg_for_avg' => $profile?->xg_for_avg,
-            'xg_against_avg' => $profile?->xg_against_avg,
-            'corners_for_avg' => $profile?->corners_for_avg,
-            'corners_against_avg' => $profile?->corners_against_avg,
-            'crosses_avg' => $profile?->crosses_avg,
-            'cards_avg' => $profile?->cards_avg,
-            'fouls_committed_avg' => $profile?->fouls_committed_avg,
-            'sot_for_avg' => $profile?->sot_for_avg,
-            'sot_against_avg' => $profile?->sot_against_avg,
+            'matches_played' => $matches,
+            'attack_strength' => $value('attack_strength'),
+            'defence_strength' => $value('defence_strength'),
+            'home_advantage_factor' => $value('home_advantage_factor'),
+            'xg_for_avg' => $value('xg_for_avg'),
+            'xg_against_avg' => $value('xg_against_avg'),
+            'corners_for_avg' => $value('corners_for_avg'),
+            'corners_against_avg' => $value('corners_against_avg'),
+            'crosses_avg' => $value('crosses_avg'),
+            'cards_avg' => $value('cards_avg'),
+            'fouls_committed_avg' => $value('fouls_committed_avg'),
+            'sot_for_avg' => $value('sot_for_avg'),
+            'sot_against_avg' => $value('sot_against_avg'),
         ];
     }
 
@@ -138,27 +174,78 @@ class GeneratePredictionsService
     private function challengerTrainingRows(): array
     {
         $profiles = TeamProfile::all()->keyBy(fn (TeamProfile $p) => $p->team_id.'|'.$p->season);
+        $this->formHistory = [];
+        $rows = [];
 
-        return Fixture::finished()
+        // Chronological walk so each row's form features only see matches
+        // played BEFORE that fixture — no peeking at the future.
+        $fixtures = Fixture::finished()
             ->whereNotNull('home_goals')
-            ->get(['id', 'season', 'home_team_id', 'away_team_id', 'home_goals', 'away_goals'])
-            ->map(function (Fixture $fixture) use ($profiles) {
-                $home = $profiles->get($fixture->home_team_id.'|'.$fixture->season);
-                $away = $profiles->get($fixture->away_team_id.'|'.$fixture->season);
-                if ($home === null || $away === null) {
-                    return null;
-                }
+            ->orderBy('kickoff_utc')
+            ->get(['id', 'season', 'home_team_id', 'away_team_id', 'home_goals', 'away_goals', 'kickoff_utc', 'is_derby']);
 
-                return [
-                    'features' => $this->challengerFeatures($home, $away),
-                    'result' => $fixture->home_goals <=> $fixture->away_goals
-                        ? ($fixture->home_goals > $fixture->away_goals ? 'home' : 'away')
-                        : 'draw',
+        foreach ($fixtures as $fixture) {
+            $home = $profiles->get($fixture->home_team_id.'|'.$fixture->season);
+            $away = $profiles->get($fixture->away_team_id.'|'.$fixture->season);
+
+            if ($home !== null && $away !== null) {
+                $features = [
+                    ...$this->challengerFeatures($home, $away),
+                    ...$this->formFeatures($fixture->home_team_id, $fixture->away_team_id, $fixture->kickoff_utc),
+                    $fixture->is_derby ? 1.0 : 0.0,
                 ];
-            })
-            ->filter(fn ($row) => $row !== null && ! in_array(null, $row['features'], true))
-            ->values()
-            ->all();
+                if (! in_array(null, $features, true)) {
+                    $rows[] = [
+                        'features' => $features,
+                        'result' => $fixture->home_goals <=> $fixture->away_goals
+                            ? ($fixture->home_goals > $fixture->away_goals ? 'home' : 'away')
+                            : 'draw',
+                    ];
+                }
+            }
+
+            $this->pushFormResult($fixture);
+        }
+
+        return $rows;
+    }
+
+    /** @var array<int, list<array{kickoff: Carbon, points: int}>> */
+    private array $formHistory = [];
+
+    private function pushFormResult(Fixture $fixture): void
+    {
+        $homePoints = $fixture->home_goals <=> $fixture->away_goals
+            ? ($fixture->home_goals > $fixture->away_goals ? 3 : 0) : 1;
+
+        $this->formHistory[$fixture->home_team_id][] = ['kickoff' => $fixture->kickoff_utc, 'points' => $homePoints];
+        $this->formHistory[$fixture->away_team_id][] = ['kickoff' => $fixture->kickoff_utc, 'points' => $homePoints === 3 ? 0 : ($homePoints === 0 ? 3 : 1)];
+    }
+
+    /**
+     * [home_ppg5, away_ppg5, home_rest_days, away_rest_days] as of the
+     * given kickoff. Defaults (league-typical 1.3 ppg, 7 rest days) keep
+     * season openers and promoted sides usable instead of dropping them.
+     *
+     * @return list<float>
+     */
+    private function formFeatures(int $homeId, int $awayId, $kickoff): array
+    {
+        $features = [];
+        foreach ([[$homeId, 'ppg'], [$awayId, 'ppg'], [$homeId, 'rest'], [$awayId, 'rest']] as [$teamId, $kind]) {
+            $history = $this->formHistory[$teamId] ?? [];
+            if ($kind === 'ppg') {
+                $recent = array_slice($history, -5);
+                $features[] = $recent === []
+                    ? 1.3
+                    : round(array_sum(array_column($recent, 'points')) / count($recent), 3);
+            } else {
+                $last = $history === [] ? null : end($history)['kickoff'];
+                $features[] = $last === null ? 7.0 : (float) min($last->diffInDays($kickoff), 14);
+            }
+        }
+
+        return $features;
     }
 
     /**

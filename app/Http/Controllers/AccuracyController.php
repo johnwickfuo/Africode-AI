@@ -47,6 +47,9 @@ class AccuracyController extends Controller
             ->selectRaw('COUNT(*) as total')
             ->selectRaw("SUM(CASE WHEN prediction_markets.outcome = 'won' THEN 1 ELSE 0 END) as hits")
             ->selectRaw('AVG(prediction_markets.probability) as avg_probability')
+            // (p - won)^2 written as a product — POWER() is missing from
+            // some SQLite builds the test suite runs on.
+            ->selectRaw("AVG((prediction_markets.probability - CASE WHEN prediction_markets.outcome = 'won' THEN 1 ELSE 0 END) * (prediction_markets.probability - CASE WHEN prediction_markets.outcome = 'won' THEN 1 ELSE 0 END)) as brier")
             ->orderBy('challenger')
             ->get()
             ->map(fn ($row) => [
@@ -56,6 +59,7 @@ class AccuracyController extends Controller
                 'hits' => (int) $row->hits,
                 'hit_rate' => round($row->hits / $row->total, 4),
                 'avg_probability' => round((float) $row->avg_probability, 4),
+                'brier' => round((float) $row->brier, 4),
             ])
             ->all();
     }
@@ -78,7 +82,39 @@ class AccuracyController extends Controller
             'markets' => $this->perMarket($rows),
             'best_bets' => $this->bestBetStats($days),
             'calibration' => $this->calibration($rows),
+            'scores' => $this->properScores($rows),
             'total_settled' => $rows->count(),
+        ];
+    }
+
+    /**
+     * Proper scoring rules over settled picks, treating each stored row as
+     * a binary event (the pick won or lost) at its claimed probability.
+     * Hit rate rewards cowardice — high-probability picks only; these
+     * punish overconfidence symmetrically. Reference points: an oracle
+     * scores 0, a coin-flipper claiming 50% scores Brier 0.25 / log-loss
+     * 0.693. Lower is better.
+     *
+     * @return array{brier: ?float, log_loss: ?float}
+     */
+    private function properScores(Collection $rows): array
+    {
+        if ($rows->isEmpty()) {
+            return ['brier' => null, 'log_loss' => null];
+        }
+
+        $brier = 0.0;
+        $logLoss = 0.0;
+        foreach ($rows as $row) {
+            $won = $row->outcome === PredictionMarket::OUTCOME_WON ? 1.0 : 0.0;
+            $p = min(max((float) $row->probability, 1e-6), 1 - 1e-6);
+            $brier += ($p - $won) ** 2;
+            $logLoss += -($won * log($p) + (1 - $won) * log(1 - $p));
+        }
+
+        return [
+            'brier' => round($brier / $rows->count(), 4),
+            'log_loss' => round($logLoss / $rows->count(), 4),
         ];
     }
 

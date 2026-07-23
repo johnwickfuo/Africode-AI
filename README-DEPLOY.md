@@ -232,7 +232,8 @@ the file.
 | 03:30 | `SettlePredictionsJob`   | scores pending picks, refreshes `model_accuracy` |
 | 04:00 | `ScrapeUnderstatJob`     | understat.com player match data + per-match team xG (free, any IP; one batch/night, newest first) |
 | 04:30 | `ScrapePlayerStatsJob`   | FBref player stats (adds shots-on-target) — only runs when `FBREF_PROXY` is set |
-| 06:00 | `GeneratePredictionsJob` | runs the models for the next 7 days of fixtures |
+| 05:45 | `ImportOddsJob`          | bookmaker odds for upcoming fixtures (free fixtures.csv) — powers the value-bet comparison |
+| 06:00 | `GeneratePredictionsJob` | runs the champion model (all markets incl. 1X2) and the ML challenger for the next 7 days of fixtures |
 | 06:30 | `GenerateAccumulatorsJob` | builds the daily 3x-10000x accumulator set from the fresh predictions |
 
 ### Player-stats backfill

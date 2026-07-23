@@ -10,11 +10,23 @@ const props = defineProps({
     fixture: { type: Object, required: true },
     referee: { type: Object, default: null },
     prediction: { type: Object, default: null },
+    value_bets: { type: Array, default: () => [] },
+    odds: { type: Object, default: null },
     profiles: { type: Object, required: true },
     xg_trend: { type: Object, required: true },
     head_to_head: { type: Array, default: () => [] },
     key_players: { type: Object, default: () => ({ home: null, away: null }) },
 });
+
+const valueMarketLabel = (row) => {
+    if (row.market === 'goals_2.5') {
+        return `${row.pick === 'over' ? 'Over' : 'Under'} 2.5 goals`;
+    }
+    if (row.pick === 'draw') return 'Draw';
+    return `${row.pick === 'home' ? props.fixture.home_team.name : props.fixture.away_team.name} win`;
+};
+
+const pctText = (value) => `${(value * 100).toFixed(0)}%`;
 
 const keyPlayerRows = [
     ['top_scorer', 'Top scorer', 'goals'],
@@ -108,6 +120,43 @@ const pageTitle = computed(
                     Model {{ prediction.model_version }} · generated {{ prediction.generated_at }}
                 </p>
             </div>
+
+            <!-- Model vs market (value bets) -->
+            <section v-if="value_bets.length" class="mb-6">
+                <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                    Model vs Market
+                </h2>
+                <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+                    <div
+                        v-for="row in value_bets"
+                        :key="row.market"
+                        class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-800/60 px-4 py-2.5 last:border-b-0"
+                    >
+                        <span class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-200">
+                            {{ valueMarketLabel(row) }}
+                        </span>
+                        <span class="font-mono text-xs text-slate-400">
+                            odds {{ row.odds.toFixed(2) }}
+                        </span>
+                        <span class="font-mono text-xs text-slate-400">
+                            market {{ pctText(row.implied_probability) }} · model {{ pctText(row.model_probability) }}
+                        </span>
+                        <span
+                            class="shrink-0 rounded px-2 py-0.5 text-xs font-bold"
+                            :class="row.is_value
+                                ? 'bg-sky-500/15 text-sky-400'
+                                : row.edge >= 0 ? 'bg-slate-800 text-slate-300' : 'bg-slate-800 text-slate-500'"
+                        >
+                            {{ row.edge >= 0 ? '+' : '' }}{{ (row.edge * 100).toFixed(1) }}%
+                            {{ row.is_value ? 'VALUE' : '' }}
+                        </span>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-500">
+                    Market probabilities are bookmaker averages with the margin stripped out.
+                    A positive edge means the model rates the pick higher than the market does.
+                </p>
+            </section>
 
             <!-- Markets -->
             <section v-for="section in sections" :key="section.title" class="mb-6">

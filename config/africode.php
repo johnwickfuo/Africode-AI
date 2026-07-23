@@ -56,6 +56,35 @@ return [
         'proxy' => env('FBREF_PROXY'),
     ],
 
+    // Bookmaker odds (football-data.co.uk fixtures.csv) and value bets.
+    'odds' => [
+        // Minimum model-vs-market probability edge for a "value" flag.
+        'value_edge_threshold' => (float) env('VALUE_EDGE_THRESHOLD', 0.05),
+    ],
+
+    // Prior profile for clubs with no history in the data (promoted sides).
+    // Values are a typical newly-promoted team in a top-5 league: weaker
+    // attack, leakier defence, otherwise league-average. Blended out as
+    // real matches accumulate: weight = matches / (matches + blend_matches).
+    'priors' => [
+        'blend_matches' => 6,
+        'promoted' => [
+            'attack_strength' => 0.85,
+            'defence_strength' => 1.15,
+            'home_advantage_factor' => 1.20,
+            'xg_for_avg' => 1.05,
+            'xg_against_avg' => 1.55,
+            'corners_for_avg' => 4.6,
+            'corners_against_avg' => 5.6,
+            'crosses_avg' => 16.0,
+            'cards_avg' => 2.2,
+            'fouls_committed_avg' => 11.5,
+            'fouls_drawn_avg' => 10.5,
+            'sot_for_avg' => 3.9,
+            'sot_against_avg' => 5.0,
+        ],
+    ],
+
     // Best Bet eligibility window (spec section 7.5).
     'best_bet' => [
         'min_prob' => (float) env('BEST_BET_MIN_PROB', 0.62),

@@ -6,11 +6,14 @@ use App\Models\Fixture;
 use App\Models\MatchStat;
 use App\Models\PlayerMatchStat;
 use App\Models\TeamProfile;
+use App\Services\Odds\ValueBets;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class MatchDetailController extends Controller
 {
+    public function __construct(private ValueBets $valueBets) {}
+
     /**
      * Full prediction breakdown for one fixture: Best Bet hero, every market
      * line, the model inputs panel (profiles, referee, xG trend), and recent
@@ -18,7 +21,7 @@ class MatchDetailController extends Controller
      */
     public function __invoke(Fixture $fixture): Response
     {
-        $fixture->load(['league:id,code,name', 'homeTeam', 'awayTeam', 'referee']);
+        $fixture->load(['league:id,code,name', 'homeTeam', 'awayTeam', 'referee', 'odds']);
 
         $prediction = $fixture->predictions()
             ->champion()
@@ -65,6 +68,10 @@ class MatchDetailController extends Controller
                     'outcome' => $market->outcome,
                 ])->values(),
             ],
+            'value_bets' => $this->valueBets->compare($prediction, $fixture->odds),
+            'odds' => $fixture->odds?->only([
+                'home_odds', 'draw_odds', 'away_odds', 'over25_odds', 'under25_odds',
+            ]),
             'profiles' => [
                 'home' => $this->profilePayload($fixture->home_team_id, $fixture->season),
                 'away' => $this->profilePayload($fixture->away_team_id, $fixture->season),

@@ -423,7 +423,7 @@ def headline(fixture, row):
 # numpy comes with the pipeline venv (soccerdata dependency); if it's absent
 # the challenger is skipped and the champion pipeline is unaffected.
 
-CHALLENGER_VERSION = "ml-1x2-v1.0.0"
+CHALLENGER_VERSION = "ml-1x2-v1.1.0"
 CHALLENGER_MIN_TRAINING = 300
 CHALLENGER_CLASSES = ["home", "draw", "away"]
 
@@ -482,6 +482,8 @@ def challenger_predict(model, features):
 
 
 def challenger_features(fixture):
+    """Must mirror the order Laravel uses for training rows: profile
+    features, then pre-match form (ppg last 5, rest days), then derby."""
     home, away = fixture["home"], fixture["away"]
     features = []
     for key in ("attack_strength", "defence_strength", "xg_for_avg",
@@ -489,6 +491,13 @@ def challenger_features(fixture):
         features.append(home.get(key))
         features.append(away.get(key))
     features.append(home.get("home_advantage_factor"))
+
+    form = fixture.get("form") or {}
+    features.append(form.get("home_ppg5", 1.3))
+    features.append(form.get("away_ppg5", 1.3))
+    features.append(form.get("home_rest", 7.0))
+    features.append(form.get("away_rest", 7.0))
+    features.append(1.0 if fixture.get("is_derby") else 0.0)
     return features
 
 

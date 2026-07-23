@@ -218,7 +218,7 @@ class GeneratePredictionsTest extends TestCase
 
         $this->assertNotNull($champion);
         $this->assertNotNull($challenger, 'challenger prediction must be stored');
-        $this->assertSame('ml-1x2-v1.0.0', $challenger->model_version);
+        $this->assertSame('ml-1x2-v1.1.0', $challenger->model_version);
 
         $markets = PredictionMarket::where('prediction_id', $challenger->id)->get();
         $this->assertCount(1, $markets, 'challenger predicts only 1X2');
@@ -231,14 +231,41 @@ class GeneratePredictionsTest extends TestCase
         $this->assertSame($champion->id, $fixture->predictions()->champion()->orderByDesc('generated_at')->first()->id);
     }
 
-    public function test_fixture_without_profiles_is_skipped_gracefully(): void
+    public function test_promoted_team_without_history_gets_prior_based_prediction(): void
     {
+        // Home side has a real profile; away side has NO profile at all —
+        // the promoted-team prior must fill in so the fixture is predicted
+        // from matchday 1 instead of being skipped.
+        $arsenal = $this->team('Arsenal');
+        $spurs = $this->team('Tottenham Hotspur');
+        $this->profile($arsenal);
+        $this->historyFixture($arsenal, $spurs, now('UTC')->subDays(30)->toDateTimeString());
+
+        $fixture = $this->upcomingFixture($arsenal, $spurs);
+
+        GeneratePredictionsJob::dispatchSync();
+
+        $prediction = Prediction::champion()->where('fixture_id', $fixture->id)->first();
+        $this->assertNotNull($prediction, 'prior-backed prediction created');
+
+        $result = PredictionMarket::where('prediction_id', $prediction->id)
+            ->where('market', 'result')->first();
+        $this->assertNotNull($result);
+        // Prior says promoted sides are weak: home favourite expected.
+        $this->assertSame('home', $result->direction);
+    }
+
+    public function test_fixture_without_any_profiles_is_predicted_from_priors(): void
+    {
+        // Behavior change with promoted-team priors: a fixture where neither
+        // side has a profile is no longer skipped — both sides fall back to
+        // the prior, so season openers between data-less clubs get picks.
         $this->historyFixture($this->team('Everton'), $this->team('Burnley'), '2025-08-30 15:00:00');
         $fixture = $this->upcomingFixture($this->team('Arsenal'), $this->team('Tottenham Hotspur'));
 
         GeneratePredictionsJob::dispatchSync();
 
-        $this->assertSame(0, Prediction::where('fixture_id', $fixture->id)->count());
+        $this->assertSame(1, Prediction::where('fixture_id', $fixture->id)->count());
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::latest('id')->first()->status);
     }
 
