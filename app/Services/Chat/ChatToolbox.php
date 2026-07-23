@@ -299,7 +299,7 @@ class ChatToolbox
                 fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id),
             ))
             ->with(['homeTeam:id,name', 'awayTeam:id,name', 'league:id,code',
-                'predictions' => fn ($query) => $query->orderByDesc('generated_at')->limit(1)])
+                'predictions' => fn ($query) => $query->champion()->orderByDesc('generated_at')->limit(1)])
             ->limit(15)
             ->get()
             ->map(fn (Fixture $fixture) => [
@@ -350,7 +350,7 @@ class ChatToolbox
             return ['result' => "No upcoming fixture found for {$team->name}".($opponent ? " against {$opponent->name}" : '').'.'];
         }
 
-        $prediction = $fixture->predictions()->orderByDesc('generated_at')->with('markets')->first();
+        $prediction = $fixture->predictions()->champion()->orderByDesc('generated_at')->with('markets')->first();
         if ($prediction === null) {
             return ['result' => "{$fixture->homeTeam->name} v {$fixture->awayTeam->name} has no prediction yet (generated daily at 06:00 for fixtures within 7 days)."];
         }
@@ -451,11 +451,29 @@ class ChatToolbox
             ];
         })->values()->all();
 
+        // Calibration: claimed-probability buckets vs realised hit rate —
+        // string keys because PHP truncates float array keys.
+        $calibration = $settled->groupBy(fn ($row) => sprintf('%.2f', min(floor($row->probability * 20) / 20, 0.95)))
+            ->map(function ($rows, $bucket) {
+                $from = (float) $bucket;
+
+                return [
+                    'claimed' => sprintf('%.0f-%.0f%%', $from * 100, ($from + 0.05) * 100),
+                    'settled' => $rows->count(),
+                    'actual_hit_rate' => round($rows->where('outcome', PredictionMarket::OUTCOME_WON)->count() / $rows->count(), 3),
+                ];
+            })
+            ->sortKeys()
+            ->values()
+            ->all();
+
         return [
             'window_days' => $args['days'] ?? 90,
             'total_settled' => $settled->count(),
             'overall_hit_rate' => round($settled->where('outcome', PredictionMarket::OUTCOME_WON)->count() / $settled->count(), 3),
             'per_market' => $perMarket,
+            'calibration' => $calibration,
+            'calibration_note' => 'Well-calibrated means actual_hit_rate ≈ the claimed range.',
         ];
     }
 

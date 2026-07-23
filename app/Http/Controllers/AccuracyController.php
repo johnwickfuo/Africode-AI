@@ -26,12 +26,46 @@ class AccuracyController extends Controller
         return Inertia::render('Accuracy', [
             'windows' => $windows,
             'model_versions' => $this->modelVersionComparison(),
+            'result_models' => $this->resultModelComparison(),
         ]);
+    }
+
+    /**
+     * Champion vs challenger on the one market they both predict (1X2):
+     * settled result picks grouped by model, like-for-like.
+     *
+     * @return list<array{version: string, challenger: bool, total: int, hits: int, hit_rate: float, avg_probability: float}>
+     */
+    private function resultModelComparison(): array
+    {
+        return PredictionMarket::query()
+            ->join('predictions', 'predictions.id', '=', 'prediction_markets.prediction_id')
+            ->where('prediction_markets.market', 'result')
+            ->whereIn('prediction_markets.outcome', [PredictionMarket::OUTCOME_WON, PredictionMarket::OUTCOME_LOST])
+            ->groupBy('predictions.model_version', 'predictions.is_challenger')
+            ->selectRaw('predictions.model_version as version, predictions.is_challenger as challenger')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN prediction_markets.outcome = 'won' THEN 1 ELSE 0 END) as hits")
+            ->selectRaw('AVG(prediction_markets.probability) as avg_probability')
+            ->orderBy('challenger')
+            ->get()
+            ->map(fn ($row) => [
+                'version' => $row->version,
+                'challenger' => (bool) $row->challenger,
+                'total' => (int) $row->total,
+                'hits' => (int) $row->hits,
+                'hit_rate' => round($row->hits / $row->total, 4),
+                'avg_probability' => round((float) $row->avg_probability, 4),
+            ])
+            ->all();
     }
 
     private function settledQuery(?int $days): Builder
     {
+        // Challenger rows stay out of the site-facing stats; they appear
+        // only in the model-vs-model tables below.
         return PredictionMarket::query()
+            ->whereHas('prediction', fn ($query) => $query->where('is_challenger', false))
             ->whereIn('outcome', [PredictionMarket::OUTCOME_WON, PredictionMarket::OUTCOME_LOST])
             ->when($days !== null, fn ($query) => $query->where('settled_at', '>=', now()->subDays($days)));
     }
@@ -81,6 +115,7 @@ class AccuracyController extends Controller
                     ->on('pm.direction', '=', 'predictions.best_bet_direction')
                     ->whereRaw('COALESCE(pm.line, -1) = COALESCE(predictions.best_bet_line, -1)');
             })
+            ->where('predictions.is_challenger', false)
             ->whereIn('pm.outcome', [PredictionMarket::OUTCOME_WON, PredictionMarket::OUTCOME_LOST])
             ->when($days !== null, fn ($query) => $query->where('pm.settled_at', '>=', now()->subDays($days)))
             ->get(['pm.outcome', 'pm.probability']);

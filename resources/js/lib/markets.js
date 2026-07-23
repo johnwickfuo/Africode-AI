@@ -1,6 +1,7 @@
 // Display names and grouping for prediction market keys.
 
 export const MARKET_LABELS = {
+    result: 'Match result',
     goals: 'Total goals',
     btts: 'Both teams to score',
     team_goals_home: 'Home team goals',
@@ -16,6 +17,7 @@ export const MARKET_LABELS = {
 
 // Section layout for the match-detail page (spec 8.2).
 export const MARKET_SECTIONS = [
+    { title: 'Match Result', markets: ['result'] },
     { title: 'Goals', markets: ['goals', 'btts', 'team_goals_home', 'team_goals_away'] },
     { title: 'Corners', markets: ['corners', 'team_corners_home', 'team_corners_away'] },
     { title: 'Cards', markets: ['cards'] },
@@ -29,6 +31,11 @@ export function marketLabel(market) {
 // Team names are optional: without them the side prefix is omitted (used
 // where the market label already says "Home team ...").
 export function lineLabel(row, homeName = null, awayName = null) {
+    if (row.market === 'result') {
+        if (row.direction === 'draw') return 'Draw';
+        const side = row.direction === 'home' ? homeName || 'Home' : awayName || 'Away';
+        return `${side} win`;
+    }
     if (row.market === 'btts') {
         return row.direction === 'yes' ? 'Yes' : 'No';
     }

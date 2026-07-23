@@ -150,21 +150,29 @@ class GeneratePredictionsTest extends TestCase
 
         $prediction = Prediction::where('fixture_id', $fixture->id)->first();
         $this->assertNotNull($prediction, 'a prediction row must be created');
-        $this->assertSame('v1.0.0', $prediction->model_version);
+        $this->assertSame('v1.1.0', $prediction->model_version);
         $this->assertStringContainsString('%', $prediction->headline_text);
         $this->assertGreaterThanOrEqual(0.5, $prediction->best_bet_probability);
         $this->assertLessThanOrEqual(0.92, $prediction->best_bet_probability, 'triviality ceiling respected');
 
         $markets = PredictionMarket::where('prediction_id', $prediction->id)->get();
-        $this->assertSame(38, $markets->count(), '5+1+3+3 goals/btts + 5+3+3 corners + 4 cards + 3+4+4 SoT');
+        $this->assertSame(39, $markets->count(), '1 result + 5+1+3+3 goals/btts + 5+3+3 corners + 4 cards + 3+4+4 SoT');
         $this->assertEqualsCanonicalizing(
-            ['goals', 'btts', 'team_goals_home', 'team_goals_away', 'corners', 'team_corners_home',
+            ['result', 'goals', 'btts', 'team_goals_home', 'team_goals_away', 'corners', 'team_corners_home',
                 'team_corners_away', 'cards', 'shots_on_target', 'team_sot_home', 'team_sot_away'],
             $markets->pluck('market')->unique()->values()->all(),
         );
         $this->assertTrue($markets->every(
-            fn (PredictionMarket $row) => $row->probability >= 0.5 && $row->probability <= 1.0
+            // 1X2 favourites can sit below 50% (three outcomes); every
+            // binary market must carry the favoured side.
+            fn (PredictionMarket $row) => $row->probability >= ($row->market === 'result' ? 1 / 3 : 0.5)
+                && $row->probability <= 1.0
         ), 'stored rows carry the favoured side');
+
+        $result = $markets->where('market', 'result');
+        $this->assertCount(1, $result, 'one 1X2 pick per fixture');
+        $this->assertContains($result->first()->direction, ['home', 'draw', 'away']);
+        $this->assertNull($result->first()->line);
         $this->assertTrue($markets->every(
             fn (PredictionMarket $row) => $row->outcome === PredictionMarket::OUTCOME_PENDING
         ));
@@ -178,6 +186,49 @@ class GeneratePredictionsTest extends TestCase
         ), 'over-probability must fall as the line rises');
 
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::lastSuccessfulRun('GeneratePredictionsJob')->status);
+    }
+
+    public function test_challenger_trains_and_predicts_alongside_the_champion(): void
+    {
+        // Profiles + ≥300 finished fixtures give the softmax challenger a
+        // training set; the champion and challenger then both predict the
+        // upcoming fixture, and only the champion is user-visible.
+        $teams = Team::whereHas('league', fn ($q) => $q->where('code', 'PL'))->orderBy('id')->get();
+        foreach ($teams as $team) {
+            $this->profile($team, ['attack_strength' => 0.85 + ($team->id % 7) * 0.09]);
+        }
+
+        $created = 0;
+        foreach ($teams as $home) {
+            foreach ($teams as $away) {
+                if ($home->id === $away->id || $created >= 310) {
+                    continue;
+                }
+                $this->historyFixture($home, $away, now('UTC')->subDays(200 - intdiv($created, 3))->toDateTimeString());
+                $created++;
+            }
+        }
+
+        $fixture = $this->upcomingFixture($this->team('Arsenal'), $this->team('Chelsea'));
+
+        GeneratePredictionsJob::dispatchSync();
+
+        $champion = Prediction::champion()->where('fixture_id', $fixture->id)->first();
+        $challenger = Prediction::where('is_challenger', true)->where('fixture_id', $fixture->id)->first();
+
+        $this->assertNotNull($champion);
+        $this->assertNotNull($challenger, 'challenger prediction must be stored');
+        $this->assertSame('ml-1x2-v1.0.0', $challenger->model_version);
+
+        $markets = PredictionMarket::where('prediction_id', $challenger->id)->get();
+        $this->assertCount(1, $markets, 'challenger predicts only 1X2');
+        $this->assertSame('result', $markets->first()->market);
+        $this->assertContains($markets->first()->direction, ['home', 'draw', 'away']);
+        $this->assertGreaterThan(1 / 3 - 0.01, $markets->first()->probability);
+        $this->assertLessThanOrEqual(1.0, $markets->first()->probability);
+
+        // The site never surfaces the challenger as its pick.
+        $this->assertSame($champion->id, $fixture->predictions()->champion()->orderByDesc('generated_at')->first()->id);
     }
 
     public function test_fixture_without_profiles_is_skipped_gracefully(): void

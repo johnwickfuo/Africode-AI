@@ -103,6 +103,9 @@ class SettlePredictionsTest extends TestCase
         // Actuals: goals 3, home 2, away 1, btts yes, corners 11 (7/4),
         // cards 6, SoT 9 (6/3).
         $prediction = $this->predictionWithMarkets($fixture, [
+            ['result', null, 'home', 0.52],          // 2-1 home win  won
+            ['result', null, 'draw', 0.30],          // not a draw  lost
+            ['result', null, 'away', 0.28],          // not away  lost
             ['goals', 2.5, 'over', 0.64],            // 3 > 2.5  won
             ['goals', 3.5, 'over', 0.55],            // 3 < 3.5  lost
             ['btts', null, 'yes', 0.66],             // both scored  won
@@ -119,13 +122,16 @@ class SettlePredictionsTest extends TestCase
 
         $summary = app(SettlePredictionsService::class)->run();
 
-        $this->assertSame(12, $summary['settled']);
+        $this->assertSame(15, $summary['settled']);
         $this->assertSame(0, $summary['awaiting_stats']);
 
         $outcomes = PredictionMarket::where('prediction_id', $prediction->id)
             ->get()
             ->mapWithKeys(fn ($row) => [$row->market.'|'.$row->line.'|'.$row->direction => $row->outcome]);
 
+        $this->assertSame('won', $outcomes['result||home']);
+        $this->assertSame('lost', $outcomes['result||draw']);
+        $this->assertSame('lost', $outcomes['result||away']);
         $this->assertSame('won', $outcomes['goals|2.5|over']);
         $this->assertSame('lost', $outcomes['goals|3.5|over']);
         $this->assertSame('won', $outcomes['btts||yes']);

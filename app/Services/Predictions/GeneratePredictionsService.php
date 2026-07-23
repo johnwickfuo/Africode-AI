@@ -86,6 +86,7 @@ class GeneratePredictionsService
                 'best_bet_max_prob' => config('africode.best_bet.max_prob'),
             ],
             'league_averages' => $this->leagueAverages(),
+            'training' => $this->challengerTrainingRows(),
             'fixtures' => $fixtures->map(fn (Fixture $fixture) => [
                 'fixture_id' => $fixture->id,
                 'league_id' => $fixture->league_id,
@@ -113,6 +114,8 @@ class GeneratePredictionsService
             'attack_strength' => $profile?->attack_strength,
             'defence_strength' => $profile?->defence_strength,
             'home_advantage_factor' => $profile?->home_advantage_factor,
+            'xg_for_avg' => $profile?->xg_for_avg,
+            'xg_against_avg' => $profile?->xg_against_avg,
             'corners_for_avg' => $profile?->corners_for_avg,
             'corners_against_avg' => $profile?->corners_against_avg,
             'crosses_avg' => $profile?->crosses_avg,
@@ -121,6 +124,60 @@ class GeneratePredictionsService
             'sot_for_avg' => $profile?->sot_for_avg,
             'sot_against_avg' => $profile?->sot_against_avg,
         ];
+    }
+
+    /**
+     * Training rows for the ML challenger (1X2): every finished fixture with
+     * both teams' season profiles and the observed result. Features come
+     * from the season-level profiles rather than pre-match snapshots — a
+     * known simplification; the honest referee is the live A/B on future
+     * fixtures, which both models predict blind.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function challengerTrainingRows(): array
+    {
+        $profiles = TeamProfile::all()->keyBy(fn (TeamProfile $p) => $p->team_id.'|'.$p->season);
+
+        return Fixture::finished()
+            ->whereNotNull('home_goals')
+            ->get(['id', 'season', 'home_team_id', 'away_team_id', 'home_goals', 'away_goals'])
+            ->map(function (Fixture $fixture) use ($profiles) {
+                $home = $profiles->get($fixture->home_team_id.'|'.$fixture->season);
+                $away = $profiles->get($fixture->away_team_id.'|'.$fixture->season);
+                if ($home === null || $away === null) {
+                    return null;
+                }
+
+                return [
+                    'features' => $this->challengerFeatures($home, $away),
+                    'result' => $fixture->home_goals <=> $fixture->away_goals
+                        ? ($fixture->home_goals > $fixture->away_goals ? 'home' : 'away')
+                        : 'draw',
+                ];
+            })
+            ->filter(fn ($row) => $row !== null && ! in_array(null, $row['features'], true))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Feature vector shared by training and inference — order matters.
+     *
+     * @return list<float|null>
+     */
+    private function challengerFeatures(TeamProfile|array $home, TeamProfile|array $away): array
+    {
+        $get = fn ($side, string $key) => is_array($side) ? ($side[$key] ?? null) : $side->{$key};
+
+        $features = [];
+        foreach (['attack_strength', 'defence_strength', 'xg_for_avg', 'xg_against_avg', 'sot_for_avg', 'sot_against_avg'] as $key) {
+            $features[] = $get($home, $key) !== null ? (float) $get($home, $key) : null;
+            $features[] = $get($away, $key) !== null ? (float) $get($away, $key) : null;
+        }
+        $features[] = $get($home, 'home_advantage_factor') !== null ? (float) $get($home, 'home_advantage_factor') : null;
+
+        return $features;
     }
 
     /**
@@ -253,34 +310,44 @@ class GeneratePredictionsService
         $marketRows = 0;
         $now = now();
 
-        foreach ($payload['predictions'] ?? [] as $entry) {
-            $best = $entry['best_bet'];
+        $batches = [
+            [$payload['predictions'] ?? [], $modelVersion, false],
+            [$payload['challenger_predictions'] ?? [], $payload['challenger_model_version'] ?? 'challenger', true],
+        ];
 
-            $prediction = Prediction::create([
-                'fixture_id' => $entry['fixture_id'],
-                'generated_at' => $now,
-                'model_version' => $modelVersion,
-                'best_bet_market' => $best['market'],
-                'best_bet_line' => $best['line'],
-                'best_bet_direction' => $best['direction'],
-                'best_bet_probability' => $best['probability'],
-                'headline_text' => $best['headline'],
-            ]);
+        foreach ($batches as [$entries, $version, $isChallenger]) {
+            foreach ($entries as $entry) {
+                $best = $entry['best_bet'];
 
-            PredictionMarket::insert(array_map(fn (array $row) => [
-                'prediction_id' => $prediction->id,
-                'market' => $row['market'],
-                'line' => $row['line'],
-                'direction' => $row['direction'],
-                'probability' => $row['probability'],
-                'confidence_margin' => $row['confidence_margin'],
-                'outcome' => PredictionMarket::OUTCOME_PENDING,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ], $entry['markets']));
+                $prediction = Prediction::create([
+                    'fixture_id' => $entry['fixture_id'],
+                    'generated_at' => $now,
+                    'model_version' => $version,
+                    'is_challenger' => $isChallenger,
+                    'best_bet_market' => $best['market'],
+                    'best_bet_line' => $best['line'],
+                    'best_bet_direction' => $best['direction'],
+                    'best_bet_probability' => $best['probability'],
+                    'headline_text' => $best['headline'],
+                ]);
 
-            $created++;
-            $marketRows += count($entry['markets']);
+                PredictionMarket::insert(array_map(fn (array $row) => [
+                    'prediction_id' => $prediction->id,
+                    'market' => $row['market'],
+                    'line' => $row['line'],
+                    'direction' => $row['direction'],
+                    'probability' => $row['probability'],
+                    'confidence_margin' => $row['confidence_margin'],
+                    'outcome' => PredictionMarket::OUTCOME_PENDING,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ], $entry['markets']));
+
+                if (! $isChallenger) {
+                    $created++;
+                    $marketRows += count($entry['markets']);
+                }
+            }
         }
 
         foreach ($payload['skipped'] ?? [] as $skipped) {

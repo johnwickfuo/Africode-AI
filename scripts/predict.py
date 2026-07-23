@@ -38,7 +38,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-MODEL_VERSION = "v1.0.0"
+MODEL_VERSION = "v1.1.0"
 
 # Dixon-Coles low-score correlation. A full MLE refit is a later model
 # version; -0.10 is in the range fitted across European leagues.
@@ -165,9 +165,16 @@ def goals_markets(fixture, league):
     home_over = {}
     away_over = {}
     btts_yes = 0.0
+    p_home = p_draw = p_away = 0.0
     for x in range(MAX_GOALS + 1):
         for y in range(MAX_GOALS + 1):
             p = matrix[x][y]
+            if x > y:
+                p_home += p
+            elif x == y:
+                p_draw += p
+            else:
+                p_away += p
             for line in GOAL_LINES:
                 if x + y > line:
                     total_over[line] = total_over.get(line, 0.0) + p
@@ -179,7 +186,8 @@ def goals_markets(fixture, league):
             if x >= 1 and y >= 1:
                 btts_yes += p
 
-    rows = [market_row("goals", line, total_over.get(line, 0.0)) for line in GOAL_LINES]
+    rows = [result_row(p_home, p_draw, p_away)]
+    rows += [market_row("goals", line, total_over.get(line, 0.0)) for line in GOAL_LINES]
     rows.append(btts_row(btts_yes))
     rows += [market_row("team_goals_home", line, home_over.get(line, 0.0)) for line in TEAM_GOAL_LINES]
     rows += [market_row("team_goals_away", line, away_over.get(line, 0.0)) for line in TEAM_GOAL_LINES]
@@ -325,6 +333,24 @@ def market_row(market, line, p_over):
     }
 
 
+def result_row(p_home, p_draw, p_away):
+    """1X2: the favoured outcome from the Dixon-Coles matrix. One row (the
+    pick), like every other market — the losing outcomes are implied."""
+    direction, probability = max(
+        (("home", p_home), ("draw", p_draw), ("away", p_away)),
+        key=lambda pair: pair[1],
+    )
+    return {
+        "market": "result",
+        "line": None,
+        "direction": direction,
+        "probability": round(probability, 4),
+        # Same scale as the binary markets so Best Bet ranking stays fair:
+        # a sub-50% favourite never outranks a confident line pick.
+        "confidence_margin": round(max(probability - 0.5, 0.0), 4),
+    }
+
+
 def btts_row(p_yes):
     direction, probability = ("yes", p_yes) if p_yes >= 0.5 else ("no", 1 - p_yes)
     return {
@@ -371,6 +397,12 @@ def headline(fixture, row):
     if market == "btts":
         return f"Both teams to score: {'Yes' if direction == 'yes' else 'No'} — {percent}"
 
+    if market == "result":
+        if direction == "draw":
+            return f"Draw — {percent}"
+        side = fixture["home"]["name"] if direction == "home" else fixture["away"]["name"]
+        return f"{side} to win — {percent}"
+
     word = "Over" if direction == "over" else "Under"
     plain = {"goals": "goals", "corners": "corners", "cards": "cards",
              "shots_on_target": "shots on target"}
@@ -380,6 +412,106 @@ def headline(fixture, row):
     team = fixture["home"]["name"] if market.endswith("_home") else fixture["away"]["name"]
     unit = "goals" if "goals" in market else "corners" if "corners" in market else "shots on target"
     return f"{team} {word.lower()} {line} {unit} — {percent}"
+
+
+# --- ML challenger (1X2) -----------------------------------------------------
+#
+# A softmax (multinomial logistic) regression over the profile features that
+# Laravel exports as training rows, predicting home/draw/away head-to-head
+# against the Dixon-Coles champion. Its predictions are stored separately
+# (is_challenger) and never shown as picks — the accuracy tracker referees.
+# numpy comes with the pipeline venv (soccerdata dependency); if it's absent
+# the challenger is skipped and the champion pipeline is unaffected.
+
+CHALLENGER_VERSION = "ml-1x2-v1.0.0"
+CHALLENGER_MIN_TRAINING = 300
+CHALLENGER_CLASSES = ["home", "draw", "away"]
+
+
+def train_challenger(training):
+    try:
+        import numpy as np
+    except ImportError:
+        log.warning("numpy unavailable — challenger model skipped")
+        return None
+
+    rows = [r for r in training if r.get("features") and None not in r["features"]]
+    if len(rows) < CHALLENGER_MIN_TRAINING:
+        log.info("Challenger: %d training rows (< %d) — skipped", len(rows), CHALLENGER_MIN_TRAINING)
+        return None
+
+    x = np.array([r["features"] for r in rows], dtype=float)
+    y = np.array([CHALLENGER_CLASSES.index(r["result"]) for r in rows])
+
+    mean, std = x.mean(axis=0), x.std(axis=0)
+    std[std == 0] = 1.0
+    x = np.hstack([(x - mean) / std, np.ones((len(x), 1))])  # standardize + bias
+
+    rng = np.random.default_rng(7)  # deterministic nightly retrains
+    weights = rng.normal(0, 0.01, size=(x.shape[1], len(CHALLENGER_CLASSES)))
+    onehot = np.eye(len(CHALLENGER_CLASSES))[y]
+    lr, l2 = 0.5, 1e-3
+
+    for _ in range(400):
+        logits = x @ weights
+        logits -= logits.max(axis=1, keepdims=True)
+        probs = np.exp(logits)
+        probs /= probs.sum(axis=1, keepdims=True)
+        grad = x.T @ (probs - onehot) / len(x) + l2 * weights
+        weights -= lr * grad
+
+    return {"weights": weights, "mean": mean, "std": std, "np": np, "samples": len(rows)}
+
+
+def challenger_predict(model, features):
+    np = model["np"]
+    x = (np.array(features, dtype=float) - model["mean"]) / model["std"]
+    logits = np.append(x, 1.0) @ model["weights"]
+    logits -= logits.max()
+    probs = np.exp(logits)
+    probs /= probs.sum()
+
+    pick = int(probs.argmax())
+    return {
+        "market": "result",
+        "line": None,
+        "direction": CHALLENGER_CLASSES[pick],
+        "probability": round(float(probs[pick]), 4),
+        "confidence_margin": round(max(float(probs[pick]) - 0.5, 0.0), 4),
+    }
+
+
+def challenger_features(fixture):
+    home, away = fixture["home"], fixture["away"]
+    features = []
+    for key in ("attack_strength", "defence_strength", "xg_for_avg",
+                "xg_against_avg", "sot_for_avg", "sot_against_avg"):
+        features.append(home.get(key))
+        features.append(away.get(key))
+    features.append(home.get("home_advantage_factor"))
+    return features
+
+
+def run_challenger(payload):
+    model = train_challenger(payload.get("training") or [])
+    if model is None:
+        return []
+
+    predictions = []
+    for fixture in payload.get("fixtures", []):
+        features = challenger_features(fixture)
+        if None in features:
+            continue
+        row = challenger_predict(model, features)
+        predictions.append({
+            "fixture_id": fixture["fixture_id"],
+            "best_bet": {**row, "headline": headline(fixture, row)},
+            "markets": [row],
+        })
+
+    log.info("Challenger: trained on %d results, predicted %d fixtures",
+             model["samples"], len(predictions))
+    return predictions
 
 
 # --- driver ------------------------------------------------------------------
@@ -446,11 +578,15 @@ def main():
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     tmp = output.with_suffix(output.suffix + ".tmp")
+    challenger = run_challenger(payload)
+
     tmp.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model_version": MODEL_VERSION,
         "prediction_count": len(predictions),
         "predictions": predictions,
+        "challenger_model_version": CHALLENGER_VERSION,
+        "challenger_predictions": challenger,
         "skipped": skipped,
     }, ensure_ascii=False))
     tmp.replace(output)

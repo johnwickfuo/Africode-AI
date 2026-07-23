@@ -21,6 +21,7 @@ class HistoryController extends Controller
         $displayTz = config('africode.display_timezone');
 
         $rows = PredictionMarket::query()
+            ->whereHas('prediction', fn ($query) => $query->where('is_challenger', false))
             ->whereIn('outcome', [PredictionMarket::OUTCOME_WON, PredictionMarket::OUTCOME_LOST])
             ->when($market, fn ($query) => $query->where('market', $market))
             ->when($leagueCode, fn ($query) => $query->whereHas(

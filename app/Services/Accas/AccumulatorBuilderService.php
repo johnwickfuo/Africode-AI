@@ -99,7 +99,7 @@ class AccumulatorBuilderService
             // No limit() here: an eager-load limit applies to the whole
             // relation query, not per fixture. first() below picks the
             // newest prediction per fixture from the ordered collection.
-            ->with(['predictions' => fn ($query) => $query->orderByDesc('generated_at')])
+            ->with(['predictions' => fn ($query) => $query->champion()->orderByDesc('generated_at')])
             ->get();
 
         return $fixtures

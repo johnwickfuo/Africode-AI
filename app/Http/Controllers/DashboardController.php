@@ -25,7 +25,7 @@ class DashboardController extends Controller
                 'league:id,code,name',
                 'homeTeam:id,name,short_name,logo_url',
                 'awayTeam:id,name,short_name,logo_url',
-                'predictions' => fn ($query) => $query->orderByDesc('generated_at'),
+                'predictions' => fn ($query) => $query->champion()->orderByDesc('generated_at'),
             ])
             ->get()
             ->map(function (Fixture $fixture) use ($displayTz) {

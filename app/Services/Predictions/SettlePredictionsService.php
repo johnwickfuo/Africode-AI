@@ -121,6 +121,9 @@ class SettlePredictionsService
         $goalsKnown = $fixture->home_goals !== null && $fixture->away_goals !== null;
 
         return [
+            'result' => $goalsKnown
+                ? ($fixture->home_goals <=> $fixture->away_goals ? ($fixture->home_goals > $fixture->away_goals ? 'home' : 'away') : 'draw')
+                : null,
             'goals' => $goalsKnown ? $fixture->home_goals + $fixture->away_goals : null,
             'team_goals_home' => $fixture->home_goals,
             'team_goals_away' => $fixture->away_goals,
@@ -164,13 +167,14 @@ class SettlePredictionsService
         return $home->yellows + ($home->reds ?? 0) + $away->yellows + ($away->reds ?? 0);
     }
 
-    private function outcome(PredictionMarket $market, int|bool $actual): string
+    private function outcome(PredictionMarket $market, int|bool|string $actual): string
     {
         $won = match ($market->direction) {
             'over' => $actual > $market->line,
             'under' => $actual < $market->line,
             'yes' => $actual === true,
             'no' => $actual === false,
+            'home', 'draw', 'away' => $actual === $market->direction,
         };
 
         return $won ? PredictionMarket::OUTCOME_WON : PredictionMarket::OUTCOME_LOST;

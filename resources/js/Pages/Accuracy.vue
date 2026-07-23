@@ -7,6 +7,7 @@ import { marketLabel } from '../lib/markets';
 const props = defineProps({
     windows: { type: Object, required: true },
     model_versions: { type: Array, default: () => [] },
+    result_models: { type: Array, default: () => [] },
 });
 
 const windowOptions = [
@@ -159,6 +160,52 @@ const gapClass = (gap) => {
                 (nightly settlement job).
             </p>
         </div>
+
+        <!-- Champion vs ML challenger on 1X2 -->
+        <section v-if="result_models.length" class="mb-6">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                Match result: model vs model (all time)
+            </h2>
+            <div class="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
+                <table class="w-full min-w-[24rem] text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                            <th class="px-4 py-2.5 text-left font-semibold">Model</th>
+                            <th class="px-3 py-2.5 text-right font-semibold">Settled</th>
+                            <th class="px-3 py-2.5 text-right font-semibold">Claimed</th>
+                            <th class="px-4 py-2.5 text-right font-semibold">Hit rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="model in result_models"
+                            :key="model.version"
+                            class="border-b border-slate-800/60 last:border-b-0"
+                        >
+                            <td class="px-4 py-2">
+                                <span class="font-mono text-slate-200">{{ model.version }}</span>
+                                <span
+                                    :class="model.challenger
+                                        ? 'ml-2 rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-purple-400'
+                                        : 'ml-2 rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-green-400'"
+                                >
+                                    {{ model.challenger ? 'Challenger' : 'Champion' }}
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-right font-mono text-slate-300">{{ model.total }}</td>
+                            <td class="px-3 py-2 text-right font-mono text-slate-300">{{ pct(model.avg_probability) }}</td>
+                            <td class="px-4 py-2 text-right font-mono font-semibold text-slate-100">
+                                {{ pct(model.hit_rate) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">
+                Both models predict every match result blind; the challenger's picks are
+                never shown on the site — this table is the referee.
+            </p>
+        </section>
 
         <!-- Model versions -->
         <section v-if="model_versions.length" class="mb-6">

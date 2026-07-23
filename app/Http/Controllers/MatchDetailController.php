@@ -21,6 +21,7 @@ class MatchDetailController extends Controller
         $fixture->load(['league:id,code,name', 'homeTeam', 'awayTeam', 'referee']);
 
         $prediction = $fixture->predictions()
+            ->champion()
             ->orderByDesc('generated_at')
             ->with('markets')
             ->first();
