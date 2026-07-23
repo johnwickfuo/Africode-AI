@@ -139,29 +139,74 @@ class ImportFbrefDataService
         return $team;
     }
 
+    private const STOP_TOKENS = [
+        'fc', 'afc', 'cf', 'ac', 'as', 'ss', 'us', 'rc', 'sc', 'sv', 'st',
+        'club', 'de', 'real', 'deportivo', 'stade', 'olympique',
+    ];
+
     /**
-     * A team created by the fixture sync (promoted side) carries a guessed
-     * fbref_name. When FBref's real squad name arrives, match it against
-     * the club's known names and adopt it — instead of creating a duplicate.
+     * A team created by another source may carry a different spelling
+     * ("Ipswich" vs FBref's "Ipswich Town"). Match by normalized identity,
+     * then by unique token subset — the same rule the CSV and Understat
+     * importers use — and adopt FBref's squad name as the join key. Exact
+     * matching alone created duplicate clubs (and phantom fixtures) in
+     * production. Ambiguous subsets (e.g. "Paris" ⊂ both Paris clubs)
+     * never match.
      */
     private function fuzzyMatch($teams, string $fbrefName): ?Team
     {
-        $normalize = fn (string $value) => preg_replace('/[^a-z0-9]/', '', Str::ascii(Str::lower($value)));
+        $normalize = fn (string $value) => preg_replace('/[^a-z0-9]/', '', Str::ascii(Str::lower((string) $value)));
         $needle = $normalize($fbrefName);
 
+        $found = null;
         foreach ($teams as $team) {
             $candidates = [$team->name, $team->fbref_name, $team->short_name];
             if (in_array($needle, array_map($normalize, $candidates), true)) {
-                // Adopt FBref's real squad name as the join key.
-                $this->teamCache[$team->league_id]->forget($team->fbref_name);
-                $team->update(['fbref_name' => $fbrefName]);
-                $this->teamCache[$team->league_id]->put($fbrefName, $team);
-
-                return $team;
+                $found = $team;
+                break;
             }
         }
 
-        return null;
+        if ($found === null) {
+            $tokens = $this->tokens($fbrefName);
+            $subset = $teams->filter(function (Team $team) use ($tokens) {
+                foreach ([$this->tokens($team->name), $this->tokens($team->fbref_name)] as $set) {
+                    if ($tokens !== [] && $set !== []
+                        && (array_diff($tokens, $set) === [] || array_diff($set, $tokens) === [])) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+            $found = $subset->count() === 1 ? $subset->first() : null;
+        }
+
+        if ($found !== null && $found->fbref_name !== $fbrefName) {
+            // Adopt FBref's real squad name as the join key.
+            $this->teamCache[$found->league_id]->forget($found->fbref_name);
+            $found->update(['fbref_name' => $fbrefName]);
+            $this->teamCache[$found->league_id]->put($fbrefName, $found);
+        }
+
+        return $found;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tokens(?string $name): array
+    {
+        $ascii = preg_replace('/[^a-z0-9]+/', ' ', Str::ascii(Str::lower((string) $name)));
+        $tokens = array_values(array_filter(
+            explode(' ', $ascii),
+            fn (string $token) => $token !== ''
+                && ! ctype_digit($token)
+                && ! in_array($token, self::STOP_TOKENS, true),
+        ));
+        sort($tokens);
+
+        return $tokens;
     }
 
     private function upsertFixture(League $league, array $match, Team $home, Team $away): Fixture

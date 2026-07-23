@@ -101,6 +101,26 @@ class FbrefImportTest extends TestCase
         $this->assertSame('fbref', $homeStats->source);
     }
 
+    public function test_import_matches_short_named_team_by_token_subset_instead_of_duplicating(): void
+    {
+        // A club another source created under a short spelling — FBref's
+        // fuller name must match it, not spawn a twin (the production bug
+        // behind ~550 phantom fixtures).
+        $league = League::where('code', 'PL')->first();
+        $ipswich = \App\Models\Team::create([
+            'league_id' => $league->id, 'name' => 'Ipswich',
+            'fbref_name' => 'Ipswich', 'short_name' => 'IPS',
+        ]);
+
+        $this->writeData([$this->fbrefMatch(['home_team' => 'Ipswich Town'])]);
+        app(ImportFbrefDataService::class)->run();
+
+        $this->assertSame(0, \App\Models\Team::where('name', 'like', 'Ipswich%')->where('id', '!=', $ipswich->id)->count(),
+            'no duplicate Ipswich created');
+        $this->assertSame('Ipswich Town', $ipswich->fresh()->fbref_name, 'FBref spelling adopted as join key');
+        $this->assertSame($ipswich->id, Fixture::first()->home_team_id);
+    }
+
     public function test_import_without_xg_keeps_existing_enriched_xg(): void
     {
         // First import: CSV-style row later enriched with Understat xG.
