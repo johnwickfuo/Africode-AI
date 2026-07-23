@@ -92,6 +92,22 @@ class MergeDuplicateTeamsTest extends TestCase
         $this->assertSame($this->canonical->id, $orphan->fresh()->away_team_id, 'orphan fixture remapped');
     }
 
+    public function test_salvages_unique_fbref_game_id_from_phantom(): void
+    {
+        // Production crash case: fbref_game_id is unique, so it must move
+        // to the real fixture only after the phantom is deleted.
+        $real = $this->fixture($this->canonical->id, $this->arsenal->id);
+        $phantom = $this->fixture($this->dupe->id, $this->arsenal->id);
+        $phantom->update(['fbref_game_id' => '8ff2f8fe', 'matchday' => 7]);
+
+        $this->artisan('africode:merge-duplicate-teams')->assertSuccessful();
+
+        $real->refresh();
+        $this->assertSame('8ff2f8fe', $real->fbref_game_id);
+        $this->assertSame(7, $real->matchday);
+        $this->assertNull(Fixture::find($phantom->id));
+    }
+
     public function test_dry_run_changes_nothing(): void
     {
         $phantom = $this->fixture($this->dupe->id, $this->arsenal->id);

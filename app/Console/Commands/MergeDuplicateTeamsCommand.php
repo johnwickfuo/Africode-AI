@@ -115,10 +115,9 @@ class MergeDuplicateTeamsCommand extends Command
 
             // The phantom duplicates a real fixture: keep the real one,
             // salvage anything the phantom knows that the real one doesn't.
-            foreach (['referee_id', 'matchday', 'fbref_game_id'] as $field) {
-                $target->{$field} ??= $fixture->{$field};
-            }
-            $target->save();
+            // (Applied only after the phantom is deleted — fbref_game_id is
+            // unique, so it can't exist on both rows at once.)
+            $salvage = $fixture->only(['referee_id', 'matchday', 'fbref_game_id']);
 
             foreach (MatchStat::where('fixture_id', $fixture->id)->get() as $row) {
                 $teamId = $row->team_id === $dupe->id ? $canonical->id : $row->team_id;
@@ -157,6 +156,12 @@ class MergeDuplicateTeamsCommand extends Command
             }
 
             $fixture->delete();
+
+            foreach ($salvage as $field => $value) {
+                $target->{$field} ??= $value;
+            }
+            $target->save();
+
             $summary['fixtures_merged']++;
         }
 
