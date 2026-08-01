@@ -70,7 +70,7 @@ class CsvStatsImportService
 
     /**
      * @param  list<string>|null  $seasonKeys  e.g. ["2324","2425","2526"]; null = tracked window
-     * @return array{fixtures_created: int, fixtures_updated: int, stats_rows: int, stats_skipped_fbref: int, teams_created: int, files_failed: int}
+     * @return array{fixtures_created: int, fixtures_updated: int, stats_rows: int, stats_skipped_fbref: int, teams_created: int, files_failed: int, rows_wrong_season: int}
      */
     public function run(?array $seasonKeys = null): array
     {
@@ -79,6 +79,7 @@ class CsvStatsImportService
         $summary = [
             'fixtures_created' => 0, 'fixtures_updated' => 0, 'stats_rows' => 0,
             'stats_skipped_fbref' => 0, 'teams_created' => 0, 'files_failed' => 0,
+            'rows_wrong_season' => 0,
         ];
 
         $leagues = League::all()->keyBy('code');
@@ -148,10 +149,25 @@ class CsvStatsImportService
 
     private function importFile(League $league, string $season, array $rows, array &$summary): void
     {
+        [$startYear, $endYear] = array_map('intval', explode('-', $season));
+
         foreach ($rows as $row) {
             if (blank($row['HomeTeam'] ?? null) || blank($row['AwayTeam'] ?? null)
                 || ! is_numeric($row['FTHG'] ?? null) || ! is_numeric($row['FTAG'] ?? null)) {
                 continue; // unplayed or malformed line
+            }
+
+            // A season file must contain that season's matches. Requesting a
+            // season football-data.co.uk has not published has been observed
+            // to return a same-named file from a century earlier (the 2627
+            // directory served 1926-27 First Division results), which would
+            // otherwise be stored under the current season's label and
+            // poison this season's team profiles.
+            $kickoff = $this->kickoff($row);
+            if ((int) $kickoff->year !== $startYear && (int) $kickoff->year !== $endYear) {
+                $summary['rows_wrong_season']++;
+
+                continue;
             }
 
             $home = $this->resolveTeam($league, $row['HomeTeam'], $summary);
@@ -165,7 +181,7 @@ class CsvStatsImportService
             ]);
 
             if (! $fixture->exists) {
-                $fixture->kickoff_utc = $this->kickoff($row);
+                $fixture->kickoff_utc = $kickoff;
             }
             $fixture->status = Fixture::STATUS_FINISHED;
             $fixture->home_goals = (int) $row['FTHG'];

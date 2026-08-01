@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\ScrapeFbrefJob;
 use App\Models\PipelineRun;
+use App\Support\Seasons;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -61,7 +62,10 @@ class FbrefScrapeJobTest extends TestCase
 
         $this->assertFileExists($this->dir.'/fbref_latest.json');
         $payload = json_decode(file_get_contents($this->dir.'/fbref_latest.json'), true);
-        $this->assertSame(['2324', '2425', '2526'], $payload['seasons']);
+        // The tracked window rolls forward each August, so assert against
+        // the same rolling source the job uses rather than fixed keys.
+        $this->assertSame(Seasons::tracked(), $payload['seasons']);
+        $this->assertCount(3, $payload['seasons']);
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::latest('id')->first()->status);
     }
 
