@@ -43,13 +43,13 @@ const lastPoint = computed(() => {
             <polyline
                 :points="points"
                 fill="none"
-                stroke="#22c55e"
+                stroke="#3ad986"
                 stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
             />
-            <circle v-if="lastPoint" :cx="lastPoint[0]" :cy="lastPoint[1]" r="2.5" fill="#22c55e" />
+            <circle v-if="lastPoint" :cx="lastPoint[0]" :cy="lastPoint[1]" r="2.5" fill="#3ad986" />
         </svg>
-        <p v-else class="text-xs text-slate-500">Not enough data</p>
+        <p v-else class="text-xs text-ink-500">Not enough data</p>
     </div>
 </template>

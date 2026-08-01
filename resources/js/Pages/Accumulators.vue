@@ -1,7 +1,10 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '../Layouts/AppLayout.vue';
+import EmptyState from '../Components/EmptyState.vue';
 import OutcomeBadge from '../Components/OutcomeBadge.vue';
+import PageHeader from '../Components/PageHeader.vue';
+import SectionHeading from '../Components/SectionHeading.vue';
 import { lineLabel, marketLabel } from '../lib/markets';
 
 defineProps({
@@ -20,116 +23,108 @@ const pct = (probability) => {
     <Head title="Accumulators" />
 
     <AppLayout>
-        <h1 class="mb-1 text-xl font-bold">Accumulators</h1>
-        <p class="mb-5 text-sm text-slate-400">
-            Model picks combined into tickets by target odds — fair odds from the
-            model's own probabilities. No two tickets share a call on the same market.
-        </p>
+        <PageHeader
+            eyebrow="Built fresh each morning"
+            title="Accumulators"
+            subtitle="Model picks combined into tickets by target odds. No two tickets share a call on the same market, so a single result can never sink the whole set."
+        >
+            <template #actions>
+                <span v-if="generated_at" class="text-xs text-ink-500">
+                    Generated {{ generated_at }}
+                </span>
+            </template>
+        </PageHeader>
 
-        <p v-if="generated_at" class="mb-5 text-xs text-slate-500">
-            Latest set generated {{ generated_at }} (Africa/Lagos).
-        </p>
-
-        <div v-if="tiers.some((tier) => tier.available)" class="space-y-4">
-            <div
+        <div v-if="tiers.some((tier) => tier.available)" class="space-y-3.5">
+            <article
                 v-for="tier in tiers"
                 :key="tier.target"
-                class="rounded-xl border bg-slate-900 p-4"
-                :class="tier.available ? 'border-slate-800' : 'border-dashed border-slate-700'"
+                class="card animate-fade-up"
+                :class="tier.available ? '' : 'opacity-70'"
             >
-                <div class="mb-3 flex items-center justify-between gap-2">
-                    <div class="flex items-center gap-2">
-                        <span class="rounded-lg bg-green-500 px-2.5 py-1 text-sm font-black text-slate-950">
-                            {{ tier.target }}x
-                        </span>
-                        <template v-if="tier.available">
-                            <span class="font-mono text-sm font-bold text-green-400">
+                <!-- Ticket header -->
+                <div class="flex flex-wrap items-center gap-3 border-b border-dashed border-ink-700/70 p-4">
+                    <span class="rounded-xl bg-brand-gradient px-3 py-1.5 text-base font-black tracking-tight text-ink-950 shadow-glow-sm">
+                        {{ tier.target }}x
+                    </span>
+
+                    <template v-if="tier.available">
+                        <div class="min-w-0">
+                            <p class="font-mono text-sm font-bold text-brand-300">
                                 {{ tier.combined_odds.toFixed(2) }} odds
-                            </span>
-                            <span class="text-xs text-slate-400">
-                                · {{ tier.legs.length }} legs · {{ pct(tier.combined_probability) }} win chance
-                            </span>
-                        </template>
-                    </div>
-                    <OutcomeBadge v-if="tier.available && tier.outcome !== 'pending'" :outcome="tier.outcome" />
+                            </p>
+                            <p class="text-xs text-ink-500">
+                                {{ tier.legs.length }} legs · {{ pct(tier.combined_probability) }} win chance
+                            </p>
+                        </div>
+                        <OutcomeBadge
+                            v-if="tier.outcome !== 'pending'"
+                            :outcome="tier.outcome"
+                            class="ml-auto"
+                        />
+                    </template>
+                    <p v-else class="min-w-0 text-sm text-ink-500">Not available today</p>
                 </div>
 
-                <template v-if="tier.available">
-                    <ul class="divide-y divide-slate-800/60 overflow-hidden rounded-lg bg-slate-950/50">
-                        <li
-                            v-for="leg in tier.legs"
-                            :key="`${leg.fixture_id}-${leg.market}`"
-                            class="flex items-center justify-between gap-3 px-3 py-2 text-sm"
-                        >
-                            <div class="min-w-0">
-                                <p class="truncate font-semibold text-slate-200">
-                                    {{ marketLabel(leg.market) }}: {{ lineLabel(leg) }}
-                                </p>
-                                <Link
-                                    :href="`/match/${leg.fixture_id}`"
-                                    class="text-xs text-slate-400 hover:text-slate-200"
-                                >
-                                    {{ leg.match }} · {{ leg.kickoff }}
-                                </Link>
-                            </div>
-                            <span class="shrink-0 font-mono text-xs font-semibold text-slate-300">
-                                {{ leg.odds.toFixed(2) }}
-                            </span>
-                        </li>
-                    </ul>
-                </template>
-                <p v-else class="text-sm text-slate-500">
-                    Not enough separate predictions to reach {{ tier.target }}x right now —
-                    this tier returns when more fixtures are predicted.
+                <!-- Legs -->
+                <ul v-if="tier.available" class="divide-y divide-ink-800/60">
+                    <li
+                        v-for="leg in tier.legs"
+                        :key="`${leg.fixture_id}-${leg.market}`"
+                        class="flex items-center justify-between gap-3 px-4 py-3"
+                    >
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold text-ink-100">
+                                {{ marketLabel(leg.market) }}: {{ lineLabel(leg) }}
+                            </p>
+                            <Link
+                                :href="`/match/${leg.fixture_id}`"
+                                class="mt-0.5 block truncate text-xs text-ink-500 transition hover:text-ink-300"
+                            >
+                                {{ leg.match }} · {{ leg.kickoff }}
+                            </Link>
+                        </div>
+                        <span class="shrink-0 font-mono text-sm font-semibold text-ink-300">
+                            {{ leg.odds.toFixed(2) }}
+                        </span>
+                    </li>
+                </ul>
+                <p v-else class="px-4 py-4 text-sm leading-relaxed text-ink-500">
+                    Not enough independent picks to reach {{ tier.target }}x right now — this
+                    ticket returns once more fixtures are predicted.
                 </p>
-            </div>
+            </article>
         </div>
 
-        <div
+        <EmptyState
             v-else
-            class="rounded-xl border border-dashed border-slate-700 p-8 text-center text-slate-400"
-        >
-            <p class="font-semibold">No accumulators yet.</p>
-            <p class="mt-2 text-sm">
-                Accas are built daily at 06:30 from the day's predictions. Run
-                <code class="rounded bg-slate-800 px-1.5 py-0.5 text-green-400">php artisan africode:generate-accas --now</code>
-                to build a set now.
-            </p>
-        </div>
+            icon="ticket"
+            title="No accumulators today"
+            message="Tickets are assembled every morning from the day's predictions. Once fixtures are inside the seven-day window, they appear here automatically."
+        />
 
         <!-- Record -->
         <section v-if="record.length" class="mt-8">
-            <h2 class="mb-3 text-sm font-semibold uppercase tracking-widest text-slate-400">
-                Record by tier (all time)
-            </h2>
-            <div class="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
-                <table class="w-full min-w-[16rem] text-sm">
-                    <thead>
-                        <tr class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
-                            <th class="px-4 py-2.5 text-left font-semibold">Tier</th>
-                            <th class="px-3 py-2.5 text-right font-semibold">Won</th>
-                            <th class="px-4 py-2.5 text-right font-semibold">Settled</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr
-                            v-for="row in record"
-                            :key="row.target"
-                            class="border-b border-slate-800/60 last:border-b-0"
-                        >
-                            <td class="px-4 py-2 font-mono font-bold text-slate-200">{{ row.target }}x</td>
-                            <td class="px-3 py-2 text-right font-mono text-green-400">{{ row.won }}</td>
-                            <td class="px-4 py-2 text-right font-mono text-slate-300">{{ row.total }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <SectionHeading title="Record by tier" hint="All settled tickets since launch." />
+            <ul class="card divide-y divide-ink-800/70">
+                <li
+                    v-for="row in record"
+                    :key="row.target"
+                    class="flex items-center justify-between gap-3 px-4 py-3"
+                >
+                    <span class="font-mono text-sm font-bold text-ink-100">{{ row.target }}x</span>
+                    <span class="flex items-center gap-4 text-sm">
+                        <span class="font-mono font-semibold text-brand-400">{{ row.won }} won</span>
+                        <span class="font-mono text-ink-500">of {{ row.total }}</span>
+                    </span>
+                </li>
+            </ul>
         </section>
 
-        <p class="mt-6 text-xs text-slate-500">
-            Odds are the model's fair odds (1 ÷ probability) — bookmaker prices will differ.
-            Long accumulators are entertainment, not investment: a {{ 10000 }}x ticket wins
-            about once in ten thousand tries by construction.
+        <p class="mt-6 text-xs leading-relaxed text-ink-500">
+            Odds shown are the model's own fair odds (1 ÷ probability); bookmaker prices will
+            differ. Long accumulators are entertainment, not investment — a 10,000x ticket wins
+            roughly once in ten thousand attempts by construction.
         </p>
     </AppLayout>
 </template>

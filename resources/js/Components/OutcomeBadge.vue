@@ -1,24 +1,31 @@
 <script setup>
 defineProps({
-    outcome: {
-        type: String,
-        required: true,
-    },
+    outcome: { type: String, required: true },
 });
 
 const styles = {
-    won: 'bg-green-500/15 text-green-400',
-    lost: 'bg-rose-500/15 text-rose-400',
-    void: 'bg-slate-700/40 text-slate-400',
-    pending: 'bg-slate-700/40 text-slate-400',
+    won: 'bg-brand-500/15 text-brand-300 ring-1 ring-inset ring-brand-500/30',
+    lost: 'bg-rose-500/15 text-rose-300 ring-1 ring-inset ring-rose-500/25',
+    void: 'bg-ink-700/50 text-ink-300 ring-1 ring-inset ring-ink-600/50',
+    pending: 'bg-ink-700/50 text-ink-300 ring-1 ring-inset ring-ink-600/50',
 };
+
+const labels = { won: 'Won', lost: 'Lost', void: 'Void', pending: 'Pending' };
 </script>
 
 <template>
     <span
-        class="rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wide"
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wide"
         :class="styles[outcome] ?? styles.pending"
     >
-        {{ outcome }}
+        <span
+            class="h-1.5 w-1.5 rounded-full"
+            :class="{
+                'bg-brand-400': outcome === 'won',
+                'bg-rose-400': outcome === 'lost',
+                'bg-ink-400': outcome !== 'won' && outcome !== 'lost',
+            }"
+        />
+        {{ labels[outcome] ?? outcome }}
     </span>
 </template>

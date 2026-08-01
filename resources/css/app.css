@@ -1,3 +1,134 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        color-scheme: dark;
+    }
+
+    html {
+        -webkit-tap-highlight-color: transparent;
+        scroll-behavior: smooth;
+    }
+
+    body {
+        text-rendering: optimizeLegibility;
+    }
+
+    /* Stats and odds line up column-wise wherever they appear. */
+    .font-mono,
+    table,
+    [data-nums] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    ::selection {
+        background: rgba(58, 217, 134, 0.28);
+        color: #e9eef6;
+    }
+
+    :focus-visible {
+        outline: 2px solid #3ad986;
+        outline-offset: 2px;
+        border-radius: 0.35rem;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #212c43;
+        border: 3px solid transparent;
+        background-clip: content-box;
+        border-radius: 999px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #2c3a54;
+        background-clip: content-box;
+    }
+}
+
+@layer components {
+    /* One card treatment across the whole app: layered surface, hairline
+       border, and a barely-there top sheen so cards read as lit panels. */
+    .card {
+        @apply relative overflow-hidden rounded-2xl border border-ink-750/80 bg-ink-850 shadow-card;
+    }
+
+    .card::before {
+        content: '';
+        @apply pointer-events-none absolute inset-x-0 top-0 h-24 bg-card-sheen;
+    }
+
+    .card-interactive {
+        @apply transition duration-200 hover:border-ink-600 hover:shadow-lift active:scale-[.995];
+    }
+
+    .chip {
+        @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold transition;
+    }
+
+    .chip-idle {
+        @apply bg-ink-800 text-ink-300 hover:bg-ink-750 hover:text-ink-100;
+    }
+
+    .chip-active {
+        @apply bg-brand-gradient text-ink-950 shadow-glow-sm;
+    }
+
+    .tag {
+        @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider;
+    }
+
+    .label {
+        @apply text-[11px] font-semibold uppercase tracking-[.14em] text-ink-400;
+    }
+
+    .surface-sunken {
+        @apply rounded-xl border border-ink-800/80 bg-ink-950/60;
+    }
+}
+
+@layer utilities {
+    /* Edge-to-edge scrollers (league filters, tables) without a visible bar. */
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Keep content clear of the iOS home indicator and the mobile tab bar. */
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .bottom-safe {
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+    }
+
+    .bottom-safe-nav {
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

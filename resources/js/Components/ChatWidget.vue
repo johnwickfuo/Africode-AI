@@ -57,12 +57,12 @@ const send = async (text) => {
 </script>
 
 <template>
-    <!-- Launcher -->
+    <!-- Launcher: clears the mobile tab bar, sits low on desktop -->
     <button
         v-show="!open"
         type="button"
-        class="fixed bottom-4 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-green-500 text-slate-950 shadow-lg shadow-green-500/20 transition hover:bg-green-400"
-        aria-label="Open the Africode assistant chat"
+        class="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-gradient text-ink-950 shadow-glow transition hover:scale-105 active:scale-95 bottom-safe-nav md:bottom-safe"
+        aria-label="Open the Africode assistant"
         @click="toggle"
     >
         <svg viewBox="0 0 24 24" fill="currentColor" class="h-6 w-6" aria-hidden="true">
@@ -73,21 +73,23 @@ const send = async (text) => {
     <!-- Panel -->
     <div
         v-show="open"
-        class="fixed inset-x-2 bottom-2 z-20 flex h-[70vh] max-h-[32rem] flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-96"
+        class="fixed inset-x-2 bottom-2 z-40 flex h-[76vh] max-h-[34rem] flex-col overflow-hidden rounded-2xl border border-ink-700 bg-ink-900 shadow-lift sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[24rem]"
         role="dialog"
-        aria-label="Africode assistant chat"
+        aria-label="Africode assistant"
     >
-        <header class="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-4 py-3">
-            <div class="flex items-center gap-2">
-                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500 text-xs font-black text-slate-950">A</span>
-                <div>
-                    <p class="text-sm font-bold leading-tight">Africode assistant</p>
-                    <p class="text-xs text-slate-400">Top-5 leagues · 2023-24 onwards</p>
+        <header class="flex items-center justify-between gap-3 border-b border-ink-800 bg-ink-950/70 px-4 py-3">
+            <div class="flex min-w-0 items-center gap-2.5">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-sm font-black text-ink-950">
+                    A
+                </span>
+                <div class="min-w-0">
+                    <p class="truncate text-sm font-bold leading-tight text-ink-100">Africode assistant</p>
+                    <p class="truncate text-[11px] text-ink-500">Top-5 leagues · 2023-24 onwards</p>
                 </div>
             </div>
             <button
                 type="button"
-                class="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+                class="rounded-lg p-2 text-ink-400 transition hover:bg-ink-800 hover:text-ink-100"
                 aria-label="Close chat"
                 @click="toggle"
             >
@@ -97,18 +99,18 @@ const send = async (text) => {
             </button>
         </header>
 
-        <div ref="scroller" class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        <div ref="scroller" class="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             <template v-if="messages.length === 0">
-                <p class="text-sm text-slate-400">
-                    Ask me about fixtures, predictions, team stats, referees, or how
-                    accurate the models have been.
+                <p class="text-sm leading-relaxed text-ink-400">
+                    Ask about fixtures, predictions, team or player stats, referees — or how
+                    accurate the models have actually been.
                 </p>
                 <div class="flex flex-wrap gap-2">
                     <button
                         v-for="starter in starters"
                         :key="starter"
                         type="button"
-                        class="rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700"
+                        class="rounded-full border border-ink-700 bg-ink-850 px-3 py-1.5 text-xs font-semibold text-ink-300 transition hover:border-brand-500/40 hover:text-brand-300"
                         @click="send(starter)"
                     >
                         {{ starter }}
@@ -123,25 +125,25 @@ const send = async (text) => {
                 :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
             >
                 <p
-                    class="max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2 text-sm leading-relaxed"
+                    class="max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed"
                     :class="message.role === 'user'
-                        ? 'rounded-br-sm bg-green-500 font-medium text-slate-950'
-                        : 'rounded-bl-sm bg-slate-800 text-slate-100'"
+                        ? 'rounded-br-md bg-brand-gradient font-medium text-ink-950'
+                        : 'rounded-bl-md bg-ink-800 text-ink-100'"
                 >
                     {{ message.text }}
                 </p>
             </div>
 
             <div v-if="sending" class="flex justify-start" aria-label="Assistant is typing">
-                <span class="flex gap-1 rounded-2xl rounded-bl-sm bg-slate-800 px-4 py-3">
-                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style="animation-delay: 0ms" />
-                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style="animation-delay: 120ms" />
-                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style="animation-delay: 240ms" />
+                <span class="flex gap-1 rounded-2xl rounded-bl-md bg-ink-800 px-4 py-3">
+                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400" style="animation-delay: 0ms" />
+                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400" style="animation-delay: 120ms" />
+                    <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400" style="animation-delay: 240ms" />
                 </span>
             </div>
         </div>
 
-        <form class="border-t border-slate-800 p-3" @submit.prevent="send()">
+        <form class="border-t border-ink-800 bg-ink-950/40 p-3" @submit.prevent="send()">
             <div class="flex items-end gap-2">
                 <textarea
                     ref="inputEl"
@@ -149,13 +151,13 @@ const send = async (text) => {
                     rows="1"
                     :maxlength="MAX_LENGTH"
                     placeholder="Ask about stats, fixtures, picks…"
-                    class="max-h-24 min-h-[2.5rem] flex-1 resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-green-500 focus:outline-none"
+                    class="max-h-24 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-ink-700 bg-ink-950 px-3.5 py-2.5 text-sm text-ink-100 placeholder:text-ink-500 focus:border-brand-500 focus:outline-none"
                     @keydown.enter.exact.prevent="send()"
                 />
                 <button
                     type="submit"
                     :disabled="sending || !input.trim()"
-                    class="rounded-xl bg-green-500 p-2.5 text-slate-950 transition enabled:hover:bg-green-400 disabled:opacity-40"
+                    class="rounded-xl bg-brand-gradient p-3 text-ink-950 transition enabled:hover:brightness-110 disabled:opacity-40"
                     aria-label="Send message"
                 >
                     <svg viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5" aria-hidden="true">
@@ -163,7 +165,7 @@ const send = async (text) => {
                     </svg>
                 </button>
             </div>
-            <p v-if="input.length > MAX_LENGTH - 60" class="mt-1 text-right text-xs text-slate-500">
+            <p v-if="input.length > MAX_LENGTH - 60" class="mt-1.5 text-right text-xs text-ink-500">
                 {{ MAX_LENGTH - input.length }} characters left
             </p>
         </form>
