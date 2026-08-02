@@ -107,26 +107,26 @@ class FbrefImportTest extends TestCase
         // fuller name must match it, not spawn a twin (the production bug
         // behind ~550 phantom fixtures).
         $league = League::where('code', 'PL')->first();
-        $ipswich = \App\Models\Team::create([
-            'league_id' => $league->id, 'name' => 'Ipswich',
-            'fbref_name' => 'Ipswich', 'short_name' => 'IPS',
+        $club = Team::create([
+            'league_id' => $league->id, 'name' => 'Fakenham',
+            'fbref_name' => 'Fakenham', 'short_name' => 'FKN',
         ]);
 
-        $this->writeData([$this->fbrefMatch(['home_team' => 'Ipswich Town'])]);
+        $this->writeData([$this->fbrefMatch(['home_team' => 'Fakenham Rovers'])]);
         app(ImportFbrefDataService::class)->run();
 
-        $this->assertSame(0, \App\Models\Team::where('name', 'like', 'Ipswich%')->where('id', '!=', $ipswich->id)->count(),
-            'no duplicate Ipswich created');
-        $this->assertSame('Ipswich Town', $ipswich->fresh()->fbref_name, 'FBref spelling adopted as join key');
-        $this->assertSame($ipswich->id, Fixture::first()->home_team_id);
+        $this->assertSame(0, Team::where('name', 'like', 'Fakenham%')
+            ->where('id', '!=', $club->id)->count(), 'no duplicate club created');
+        $this->assertSame('Fakenham Rovers', $club->fresh()->fbref_name, 'FBref spelling adopted as join key');
+        $this->assertSame($club->id, Fixture::first()->home_team_id);
     }
 
     public function test_import_without_xg_keeps_existing_enriched_xg(): void
     {
         // First import: CSV-style row later enriched with Understat xG.
         $league = League::where('code', 'PL')->first();
-        $arsenal = \App\Models\Team::where('name', 'Arsenal')->first();
-        $spurs = \App\Models\Team::where('name', 'Tottenham Hotspur')->first();
+        $arsenal = Team::where('name', 'Arsenal')->first();
+        $spurs = Team::where('name', 'Tottenham Hotspur')->first();
         $fixture = Fixture::create([
             'league_id' => $league->id, 'season' => '2025-2026',
             'home_team_id' => $arsenal->id, 'away_team_id' => $spurs->id,
@@ -172,24 +172,24 @@ class FbrefImportTest extends TestCase
     {
         // A promoted side created by the fixture sync with a guessed fbref_name.
         $league = League::where('code', 'PL')->first();
-        $norwich = Team::create([
-            'league_id' => $league->id, 'name' => 'Norwich City',
-            'fbref_name' => 'Norwich', 'short_name' => 'NOR',
+        $club = Team::create([
+            'league_id' => $league->id, 'name' => 'Testbury Town',
+            'fbref_name' => 'Testbury', 'short_name' => 'TST',
         ]);
 
-        // FBref's real squad name is "Norwich City".
+        // FBref's real squad name is the fuller one.
         $this->writeData([$this->fbrefMatch([
-            'game' => '2026-08-20 Norwich City-Arsenal',
+            'game' => '2026-08-20 Testbury Town-Arsenal',
             'date' => '2026-08-20',
             'kickoff' => '2026-08-20 15:00',
-            'home_team' => 'Norwich City',
+            'home_team' => 'Testbury Town',
         ])]);
 
         $summary = app(ImportFbrefDataService::class)->run();
 
         $this->assertSame(0, $summary['teams_created'], 'must reuse the sync-created team');
-        $this->assertSame('Norwich City', $norwich->fresh()->fbref_name, 'real FBref name adopted');
-        $this->assertSame($norwich->id, Fixture::first()->home_team_id);
+        $this->assertSame('Testbury Town', $club->fresh()->fbref_name, 'real FBref name adopted');
+        $this->assertSame($club->id, Fixture::first()->home_team_id);
     }
 
     public function test_import_auto_creates_teams_from_historical_seasons(): void
@@ -205,12 +205,14 @@ class FbrefImportTest extends TestCase
 
         $summary = app(ImportFbrefDataService::class)->run();
 
-        $this->assertSame(1, $summary['teams_created']);
+        // Luton is seeded in League One, so no new club is invented — the
+        // country-wide lookup reuses the existing row and its history.
+        $this->assertSame(0, $summary['teams_created']);
 
-        $luton = Team::where('fbref_name', 'Luton Town')->first();
+        $luton = Team::where('name', 'Luton Town')->first();
         $this->assertNotNull($luton);
         $this->assertSame('LUT', $luton->short_name);
-        $this->assertSame(League::where('code', 'PL')->first()->id, $luton->league_id);
+        $this->assertSame(1, Team::where('name', 'Luton Town')->count(), 'club is never duplicated across divisions');
 
         $fixture = Fixture::first();
         $this->assertSame('2023-2024', $fixture->season);

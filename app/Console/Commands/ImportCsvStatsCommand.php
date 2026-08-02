@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Jobs\ImportCsvStatsJob;
+use App\Models\League;
+use App\Support\Seasons;
 use Illuminate\Console\Command;
 
 class ImportCsvStatsCommand extends Command
@@ -15,7 +17,9 @@ class ImportCsvStatsCommand extends Command
     public function handle(): int
     {
         if ($this->option('now')) {
-            $this->info('Downloading 15 CSV files (3 seasons x 5 leagues) and importing...');
+            $leagues = League::whereNotNull('fdcouk_code')->count();
+            $seasons = count(config('africode.fbref.seasons') ?? Seasons::tracked());
+            $this->info("Downloading {$leagues} division files x {$seasons} seasons and importing...");
             ImportCsvStatsJob::dispatchSync();
             $this->info('CSV stats imported. Now run: php artisan africode:recompute-profiles --now');
         } else {

@@ -41,7 +41,7 @@ class ImportFbrefDataService
         'yellows', 'reds', 'possession',
     ];
 
-    /** @var array<int, Collection<string, Team>> league id => teams keyed by fbref_name */
+    /** @var array<string, Collection<string, Team>> country => teams keyed by fbref_name */
     private array $teamCache = [];
 
     /**
@@ -130,7 +130,12 @@ class ImportFbrefDataService
 
     private function resolveTeam(League $league, string $fbrefName, array &$summary): Team
     {
-        $teams = $this->teamCache[$league->id] ??= $league->teams()->get()->keyBy('fbref_name');
+        // Country-wide pool, matching the CSV importer: a club that moved
+        // division keeps its row instead of being duplicated per league.
+        $teams = $this->teamCache[$league->country] ??= Team::query()
+            ->whereHas('league', fn ($query) => $query->where('country', $league->country))
+            ->get()
+            ->keyBy('fbref_name');
 
         $team = $teams->get($fbrefName) ?? $this->fuzzyMatch($teams, $fbrefName);
 
@@ -141,7 +146,7 @@ class ImportFbrefDataService
                 'fbref_name' => $fbrefName,
                 'short_name' => Str::upper(Str::substr(preg_replace('/[^A-Za-z]/', '', Str::ascii($fbrefName)), 0, 3)),
             ]);
-            $this->teamCache[$league->id]->put($fbrefName, $team);
+            $this->teamCache[$league->country]->put($fbrefName, $team);
             $summary['teams_created']++;
             Log::info('FBref import: created team not in seed (historical season)', [
                 'league' => $league->code,
@@ -197,9 +202,9 @@ class ImportFbrefDataService
 
         if ($found !== null && $found->fbref_name !== $fbrefName) {
             // Adopt FBref's real squad name as the join key.
-            $this->teamCache[$found->league_id]->forget($found->fbref_name);
+            $this->teamCache[$found->league->country]->forget($found->fbref_name);
             $found->update(['fbref_name' => $fbrefName]);
-            $this->teamCache[$found->league_id]->put($fbrefName, $found);
+            $this->teamCache[$found->league->country]->put($fbrefName, $found);
         }
 
         return $found;

@@ -5,7 +5,9 @@ namespace App\Services\Odds;
 use App\Models\Fixture;
 use App\Models\FixtureOdds;
 use App\Models\League;
+use App\Models\Rivalry;
 use App\Models\Team;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -24,14 +26,9 @@ class ImportOddsService
 {
     public const CSV_URL = 'https://www.football-data.co.uk/fixtures.csv';
 
-    /** football-data.co.uk division codes => our league codes. */
-    private const DIVISIONS = [
-        'E0' => 'PL',
-        'SP1' => 'PD',
-        'I1' => 'SA',
-        'D1' => 'BL1',
-        'F1' => 'FL1',
-    ];
+    // Divisions come from the league rows (leagues.fdcouk_code): every
+    // league with a CSV division is priced here, including the ones whose
+    // upcoming fixtures this file is also the only source for.
 
     /** Same alias map as the results-CSV importer — same site, same names. */
     private const NAME_ALIASES = [
@@ -54,22 +51,21 @@ class ImportOddsService
         'club', 'de', 'real', 'deportivo', 'stade', 'olympique',
     ];
 
-    /** @var array<int, Collection<int, Team>> */
-    private array $teamsByLeague = [];
+    /** @var array<string, Collection<int, Team>> keyed by country */
+    private array $teamsByCountry = [];
 
     /**
      * @return array{rows_seen: int, odds_saved: int, fixtures_unmatched: int}
      */
     public function run(): array
     {
-        $summary = ['rows_seen' => 0, 'odds_saved' => 0, 'fixtures_unmatched' => 0];
+        $summary = ['rows_seen' => 0, 'odds_saved' => 0, 'fixtures_created' => 0, 'fixtures_unmatched' => 0];
 
         $rows = $this->download();
-        $leagues = League::all()->keyBy('code');
+        $leagues = League::whereNotNull('fdcouk_code')->get()->keyBy('fdcouk_code');
 
         foreach ($rows as $row) {
-            $leagueCode = self::DIVISIONS[$row['Div'] ?? ''] ?? null;
-            $league = $leagueCode !== null ? $leagues->get($leagueCode) : null;
+            $league = $leagues->get($row['Div'] ?? '');
             if ($league === null || blank($row['HomeTeam'] ?? null) || blank($row['AwayTeam'] ?? null)) {
                 continue;
             }
@@ -84,6 +80,26 @@ class ImportOddsService
                 ->where('kickoff_utc', '>=', now('UTC')->subDay())
                 ->orderBy('kickoff_utc')
                 ->first() : null;
+
+            // Leagues outside the football-data.org free tier have no other
+            // upcoming-fixture feed, so this file creates them. Leagues the
+            // API does cover are left alone — the sync owns their kickoff
+            // times and matchdays.
+            if ($fixture === null && $home && $away && $league->footballdata_code === null) {
+                $kickoff = $this->kickoff($row);
+                if ($kickoff !== null) {
+                    $fixture = Fixture::create([
+                        'league_id' => $league->id,
+                        'season' => $this->seasonLabel($kickoff),
+                        'home_team_id' => $home->id,
+                        'away_team_id' => $away->id,
+                        'kickoff_utc' => $kickoff,
+                        'status' => Fixture::STATUS_SCHEDULED,
+                        'is_derby' => Rivalry::isDerbyPair($home->id, $away->id),
+                    ]);
+                    $summary['fixtures_created']++;
+                }
+            }
 
             if ($fixture === null) {
                 $summary['fixtures_unmatched']++;
@@ -145,6 +161,39 @@ class ImportOddsService
     }
 
     /**
+     * fixtures.csv dates are dd/mm/yyyy with a separate HH:MM column, in UK
+     * time — close enough to UTC for a kickoff the fixture sync will correct
+     * on API-covered leagues and that only needs day precision elsewhere.
+     */
+    private function kickoff(array $row): ?Carbon
+    {
+        $date = trim((string) ($row['Date'] ?? ''));
+        if ($date === '') {
+            return null;
+        }
+
+        $time = filled($row['Time'] ?? null) ? $row['Time'] : '15:00';
+        $format = strlen($date) === 8 ? 'd/m/y H:i' : 'd/m/Y H:i';
+
+        try {
+            return Carbon::createFromFormat($format, "{$date} {$time}", 'UTC');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * European seasons start in July, so a August-to-December kickoff opens
+     * the season named for that year.
+     */
+    private function seasonLabel(Carbon $kickoff): string
+    {
+        $start = $kickoff->month >= 7 ? $kickoff->year : $kickoff->year - 1;
+
+        return $start.'-'.($start + 1);
+    }
+
+    /**
      * @return list<array<string, string>>
      */
     private function download(): array
@@ -174,7 +223,17 @@ class ImportOddsService
 
     private function resolveTeam(League $league, string $csvName): ?Team
     {
-        $teams = $this->teamsByLeague[$league->id] ??= $league->teams()->get();
+        // Same country-wide pool as the stats import, so a club that moved
+        // division still resolves to its existing row.
+        $teams = $this->teamsByCountry[$league->country] ??= Team::query()
+            ->whereHas('league', fn ($query) => $query->where('country', $league->country))
+            ->get();
+
+        $direct = $teams->first(fn (Team $team) => $team->fdcouk_name !== null
+            && strcasecmp($team->fdcouk_name, $csvName) === 0);
+        if ($direct) {
+            return $direct;
+        }
 
         $alias = self::NAME_ALIASES[$csvName] ?? null;
         if ($alias !== null && ($team = $teams->firstWhere('name', $alias))) {

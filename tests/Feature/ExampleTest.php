@@ -18,7 +18,7 @@ class ExampleTest extends TestCase
             ->assertStatus(200)
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Dashboard', false)
-                ->count('leagues', 5)
+                ->count('leagues', 12)
                 ->has('fixtures')
             );
     }

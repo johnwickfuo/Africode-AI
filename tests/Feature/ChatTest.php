@@ -323,7 +323,7 @@ class ChatTest extends TestCase
         $this->assertSame('Over 9.5 corners — 78%', $prediction['best_bet']);
 
         // Unknown team is a graceful error, not an exception.
-        $this->assertArrayHasKey('error', $toolbox->execute('get_team_stats', ['team' => 'Wrexham']));
+        $this->assertArrayHasKey('error', $toolbox->execute('get_team_stats', ['team' => 'Hamburger SV Reserves']));
 
         // Parameter validation blocks out-of-range values.
         $this->assertArrayHasKey('error', $toolbox->execute('get_fixtures', ['days' => 99]));

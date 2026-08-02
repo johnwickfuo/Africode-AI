@@ -11,19 +11,28 @@ class RivalrySeeder extends Seeder
 {
     /**
      * Static derby/rivalry list used to flag fixtures.is_derby (cards-model
-     * uplift, section 7.3 of the spec). Only pairs where BOTH teams are in
-     * the 2025-26 top flight are listed — rivalries against relegated or
-     * lower-division sides (e.g. Dortmund–Schalke) are omitted until relevant.
+     * uplift, section 7.3 of the spec).
+     *
+     * Rivals are looked up across the whole country rather than one division:
+     * many of the fiercest derbies (Derby–Forest, the two Bristol clubs, the
+     * Potteries) span tiers, and clubs move between tiers every season. Pairs
+     * naming a club we do not track at all are skipped quietly, so the list
+     * can include fixtures that only occur in some seasons.
      */
     public function run(): void
     {
         foreach ($this->rivalriesByLeague() as $leagueCode => $rivalries) {
             $league = League::where('code', $leagueCode)->firstOrFail();
 
-            $teamIdsByName = Team::where('league_id', $league->id)
+            $teamIdsByName = Team::query()
+                ->whereHas('league', fn ($query) => $query->where('country', $league->country))
                 ->pluck('id', 'name');
 
             foreach ($rivalries as [$team1, $team2, $name]) {
+                if (! isset($teamIdsByName[$team1], $teamIdsByName[$team2])) {
+                    continue;
+                }
+
                 Rivalry::updateOrCreate(
                     [
                         'team1_id' => $teamIdsByName[$team1],
@@ -93,6 +102,69 @@ class RivalrySeeder extends Seeder
                 ['OGC Nice', 'AS Monaco', "Derby de la Côte d'Azur"],
                 ['Paris Saint-Germain', 'Paris FC', 'Paris Derby'],
                 ['Stade Brestois', 'Stade Rennais', 'Derby Breton'],
+            ],
+            'ELC' => [
+                ['Sheffield United', 'Sheffield Wednesday', 'Steel City Derby'],
+                ['Birmingham City', 'West Bromwich Albion', 'Second City Derby'],
+                ['Derby County', 'Nottingham Forest', 'East Midlands Derby'],
+                ['Ipswich Town', 'Norwich City', 'East Anglian Derby'],
+                ['Stoke City', 'Port Vale', 'Potteries Derby'],
+                ['Bristol City', 'Bristol Rovers', 'Bristol Derby'],
+                ['Swansea City', 'Cardiff City', 'South Wales Derby'],
+                ['Millwall', 'Charlton Athletic', 'South London Derby'],
+                ['Blackburn Rovers', 'Preston North End', 'East Lancashire Derby'],
+                ['Hull City', 'Middlesbrough', 'Humber-Tees Rivalry'],
+            ],
+            'EL1' => [
+                ['Bolton Wanderers', 'Wigan Athletic', 'Greater Manchester Derby'],
+                ['Barnsley', 'Huddersfield Town', 'Yorkshire Derby'],
+                ['Blackpool', 'Bolton Wanderers', 'Lancashire Derby'],
+                ['Plymouth Argyle', 'Exeter City', 'Devon Derby'],
+                ['Reading', 'Wycombe Wanderers', 'Berkshire Rivalry'],
+                ['Cardiff City', 'Luton Town', 'Play-off Rivalry'],
+                ['Port Vale', 'Crewe Alexandra', 'Cheshire Derby'],
+            ],
+            'EL2' => [
+                ['Notts County', 'Chesterfield', 'Notts-Derbyshire Derby'],
+                ['Grimsby Town', 'Cheltenham Town', 'League Rivalry'],
+                ['Tranmere Rovers', 'Chesterfield', 'League Rivalry'],
+                ['Bristol Rovers', 'Swindon Town', 'West Country Derby'],
+                ['Colchester United', 'Cambridge United', 'East Anglian Derby'],
+                ['Newport County', 'Bromley', 'League Rivalry'],
+                ['Crewe Alexandra', 'Shrewsbury Town', 'Shropshire-Cheshire Derby'],
+            ],
+            'SPL' => [
+                ['Celtic', 'Rangers', 'Old Firm'],
+                ['Heart of Midlothian', 'Hibernian', 'Edinburgh Derby'],
+                ['Dundee', 'Dundee United', 'Dundee Derby'],
+                ['Aberdeen', 'Celtic', 'Northern Rivalry'],
+                ['Aberdeen', 'Rangers', 'Northern Rivalry'],
+                ['Motherwell', 'Kilmarnock', 'Ayrshire-Lanarkshire Rivalry'],
+            ],
+            'TSL' => [
+                ['Galatasaray', 'Fenerbahçe', 'Intercontinental Derby'],
+                ['Beşiktaş', 'Galatasaray', 'Istanbul Derby'],
+                ['Beşiktaş', 'Fenerbahçe', 'Istanbul Derby'],
+                ['Trabzonspor', 'Fenerbahçe', 'Karadeniz Rivalry'],
+                ['Trabzonspor', 'Galatasaray', 'Karadeniz Rivalry'],
+                ['İstanbul Başakşehir', 'Fatih Karagümrük', 'Istanbul Derby'],
+            ],
+            'DED' => [
+                ['Ajax', 'Feyenoord', 'De Klassieker'],
+                ['Ajax', 'PSV Eindhoven', 'Topper'],
+                ['PSV Eindhoven', 'Feyenoord', 'Topper'],
+                ['Feyenoord', 'Sparta Rotterdam', 'Rotterdam Derby'],
+                ['Feyenoord', 'Excelsior', 'Rotterdam Derby'],
+                ['FC Twente', 'Heracles Almelo', 'Twente Derby'],
+                ['NEC Nijmegen', 'FC Utrecht', 'Rivalry'],
+            ],
+            'PPL' => [
+                ['Benfica', 'FC Porto', 'O Clássico'],
+                ['Benfica', 'Sporting CP', 'Derby de Lisboa'],
+                ['FC Porto', 'Sporting CP', 'Big Three Clash'],
+                ['FC Porto', 'SC Braga', 'Minho-Porto Rivalry'],
+                ['SC Braga', 'Vitória Guimarães', 'Minho Derby'],
+                ['Sporting CP', 'Estoril Praia', 'Lisbon Area Derby'],
             ],
         ];
     }

@@ -12,6 +12,7 @@ class Team extends Model
         'league_id',
         'name',
         'fbref_name',
+        'fdcouk_name',
         'footballdata_id',
         'apifootball_id',
         'short_name',

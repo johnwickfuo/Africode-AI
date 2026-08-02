@@ -19,6 +19,8 @@ class League extends Model
 
     protected $fillable = [
         'code',
+        'footballdata_code',
+        'fdcouk_code',
         'name',
         'country',
         'fbref_id',

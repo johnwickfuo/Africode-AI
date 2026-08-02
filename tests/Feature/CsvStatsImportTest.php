@@ -98,17 +98,38 @@ class CsvStatsImportTest extends TestCase
             ->whereNull('fbref_name')->count());
     }
 
-    public function test_relegated_historical_team_is_auto_created(): void
+    public function test_club_from_another_english_tier_is_reused_not_duplicated(): void
     {
+        // Luton is seeded in League One. When it appears in an older Premier
+        // League file it must resolve to that same club, so its history stays
+        // in one place across promotions and relegations.
         $this->fakeCsv(['2324/E0' => [
             'E0,01/09/2023,15:00,Luton,Arsenal,0,2,A,,5,18,1,8,12,6,2,9,2,1,0,0',
         ]]);
 
         $summary = app(CsvStatsImportService::class)->run(['2324']);
 
-        $this->assertSame(1, $summary['teams_created']);
-        $this->assertNotNull(Team::where('name', 'Luton')->first());
+        $this->assertSame(0, $summary['teams_created']);
+        $this->assertSame(1, Team::where('name', 'like', 'Luton%')->count());
+        $this->assertSame(
+            Team::where('name', 'Luton Town')->first()->id,
+            Fixture::first()->home_team_id,
+        );
         $this->assertSame('2023-2024', Fixture::first()->season);
+    }
+
+    public function test_untracked_historical_team_is_auto_created(): void
+    {
+        $this->fakeCsv(['2324/E0' => [
+            'E0,01/09/2023,15:00,Yeovil,Arsenal,0,2,A,,5,18,1,8,12,6,2,9,2,1,0,0',
+        ]]);
+
+        $summary = app(CsvStatsImportService::class)->run(['2324']);
+
+        $this->assertSame(1, $summary['teams_created']);
+        $created = Team::where('name', 'Yeovil')->first();
+        $this->assertNotNull($created);
+        $this->assertSame('Yeovil', $created->fdcouk_name, 'CSV spelling stored as the join key');
     }
 
     public function test_never_overwrites_richer_fbref_rows(): void

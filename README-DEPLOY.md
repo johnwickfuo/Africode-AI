@@ -79,10 +79,25 @@ Laravel's `public/` folder is ever web-served; the repo root (with `.env`,
 1. **DB → Add Database** in Hestia (e.g. `admin_africode`), note the user
    and password Hestia generates.
 2. Open phpMyAdmin, select the new database, **Import** →
-   `database/africode.sql` from the repo (44 KB). That loads the full
-   schema plus the seed data: 5 leagues, 96 teams, the 40-derby rivalry
-   list, and the `migrations` bookkeeping so future `php artisan migrate`
-   knows what already ran.
+   `database/africode.sql` from the repo. That loads the full schema plus
+   the seed data: 12 leagues, their squads, the derby list, and the
+   `migrations` bookkeeping so future `php artisan migrate` knows what
+   already ran.
+
+### Tracked leagues
+
+| League | Fixtures | Stats + odds | Notes |
+|---|---|---|---|
+| Premier League, La Liga, Serie A, Bundesliga, Ligue 1 | football-data.org (14 days) | football-data.co.uk | xG from Understat |
+| Championship, Eredivisie, Primeira Liga | football-data.org (14 days) | football-data.co.uk | no xG |
+| League One, League Two, Scottish Premiership, Süper Lig | fixtures.csv (~1 week) | football-data.co.uk | no xG; not on the free API tier |
+
+Referees are published for the English and Scottish divisions only;
+elsewhere the cards model falls back to the league-average referee and
+lowers its confidence accordingly. Adding another league is a data
+change: give it a row in `LeagueSeeder` with an `fdcouk_code` (see
+football-data.co.uk for the division letter) and, if the free API tier
+carries it, a `footballdata_code`.
 
 ## 4. Configure .env
 

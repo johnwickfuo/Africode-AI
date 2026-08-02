@@ -35,10 +35,16 @@ class Rivalry extends Model
      */
     public static function isDerbyPair(int $teamAId, int $teamBId): bool
     {
+        // Both orderings must be checked as AND pairs. Passing arrays to
+        // orWhere() does NOT do that: Laravel joins the array's conditions
+        // with the same boolean it was given, so ['team1_id' => B,
+        // 'team2_id' => A] became "team1 = B OR team2 = A" and flagged
+        // unrelated fixtures as derbies.
         return static::query()
             ->where(function ($query) use ($teamAId, $teamBId) {
-                $query->where(['team1_id' => $teamAId, 'team2_id' => $teamBId])
-                    ->orWhere(['team1_id' => $teamBId, 'team2_id' => $teamAId]);
+                $query
+                    ->where(fn ($pair) => $pair->where('team1_id', $teamAId)->where('team2_id', $teamBId))
+                    ->orWhere(fn ($pair) => $pair->where('team1_id', $teamBId)->where('team2_id', $teamAId));
             })
             ->exists();
     }

@@ -35,14 +35,8 @@ class CsvStatsImportService
 
     public const SOURCE = 'fdcouk';
 
-    /** Our league codes => football-data.co.uk file names. */
-    private const LEAGUE_FILES = [
-        'PL' => 'E0',
-        'PD' => 'SP1',
-        'SA' => 'I1',
-        'BL1' => 'D1',
-        'FL1' => 'F1',
-    ];
+    // Which divisions to fetch now lives on the league rows
+    // (leagues.fdcouk_code), so adding a league is a data change.
 
     /** football-data.co.uk team names that no generic rule can bridge. */
     private const NAME_ALIASES = [
@@ -65,8 +59,8 @@ class CsvStatsImportService
         'club', 'de', 'real', 'deportivo', 'stade', 'olympique',
     ];
 
-    /** @var array<int, Collection<int, Team>> */
-    private array $teamsByLeague = [];
+    /** @var array<string, Collection<int, Team>> keyed by country */
+    private array $teamsByCountry = [];
 
     /**
      * @param  list<string>|null  $seasonKeys  e.g. ["2324","2425","2526"]; null = tracked window
@@ -82,24 +76,24 @@ class CsvStatsImportService
             'files_failed' => 0, 'rows_wrong_season' => 0,
         ];
 
-        $leagues = League::all()->keyBy('code');
+        $leagues = League::whereNotNull('fdcouk_code')->orderBy('id')->get();
         $first = true;
 
         foreach ($seasonKeys as $seasonKey) {
-            foreach (self::LEAGUE_FILES as $leagueCode => $file) {
+            foreach ($leagues as $league) {
                 if (! $first) {
                     Sleep::for(2)->seconds(); // polite pacing between downloads
                 }
                 $first = false;
 
-                $rows = $this->download($seasonKey, $file);
+                $rows = $this->download($seasonKey, $league->fdcouk_code);
                 if ($rows === null) {
                     $summary['files_failed']++;
 
                     continue;
                 }
 
-                $this->importFile($leagues[$leagueCode], $this->seasonLabel($seasonKey), $rows, $summary);
+                $this->importFile($league, $this->seasonLabel($seasonKey), $rows, $summary);
             }
         }
 
@@ -173,14 +167,29 @@ class CsvStatsImportService
             $home = $this->resolveTeam($league, $row['HomeTeam'], $summary);
             $away = $this->resolveTeam($league, $row['AwayTeam'], $summary);
 
-            $fixture = Fixture::firstOrNew([
-                'league_id' => $league->id,
-                'season' => $season,
-                'home_team_id' => $home->id,
-                'away_team_id' => $away->id,
-            ]);
+            // Season + venue + pairing is NOT unique everywhere: leagues that
+            // split (Scotland plays each rival three or four times) stage the
+            // same home fixture twice a season. Matching within a few days of
+            // the CSV date keeps those apart while still merging with the
+            // fixture the API sync created for the same match.
+            $fixture = Fixture::query()
+                ->where('league_id', $league->id)
+                ->where('season', $season)
+                ->where('home_team_id', $home->id)
+                ->where('away_team_id', $away->id)
+                ->whereBetween('kickoff_utc', [
+                    $kickoff->copy()->subDays(3),
+                    $kickoff->copy()->addDays(3),
+                ])
+                ->first();
 
-            if (! $fixture->exists) {
+            if ($fixture === null) {
+                $fixture = new Fixture([
+                    'league_id' => $league->id,
+                    'season' => $season,
+                    'home_team_id' => $home->id,
+                    'away_team_id' => $away->id,
+                ]);
                 $fixture->kickoff_utc = $kickoff;
             }
             $fixture->status = Fixture::STATUS_FINISHED;
@@ -293,7 +302,17 @@ class CsvStatsImportService
 
     private function resolveTeam(League $league, string $csvName, array &$summary): Team
     {
-        $teams = $this->teamsByLeague[$league->id] ??= $league->teams()->get();
+        // Candidates are every club in the same country, not just this
+        // division: promoted and relegated sides must keep the row (and the
+        // history) they already have rather than being duplicated.
+        $teams = $this->teamsForCountry($league);
+
+        // Seeded CSV spelling is an exact join key — no guessing needed.
+        $direct = $teams->first(fn (Team $team) => $team->fdcouk_name !== null
+            && strcasecmp($team->fdcouk_name, $csvName) === 0);
+        if ($direct) {
+            return $direct;
+        }
 
         $alias = self::NAME_ALIASES[$csvName] ?? null;
         if ($alias !== null && ($team = $teams->firstWhere('name', $alias))) {
@@ -321,19 +340,30 @@ class CsvStatsImportService
             return $subset->first();
         }
 
-        // Relegated/historical club not in the seed — create it, mirroring
-        // the FBref importer (whose fuzzy fallback will unify names later).
+        // Historical or newly promoted club not in the seed — create it and
+        // record the CSV spelling so later runs match it directly.
         $team = Team::create([
             'league_id' => $league->id,
             'name' => $csvName,
             'fbref_name' => $csvName,
+            'fdcouk_name' => $csvName,
             'short_name' => Str::upper(Str::substr(preg_replace('/[^A-Za-z]/', '', Str::ascii($csvName)), 0, 3)),
         ]);
-        $this->teamsByLeague[$league->id]->push($team);
+        $this->teamsByCountry[$league->country]->push($team);
         $summary['teams_created']++;
         Log::info('CSV import: created team not in seed', ['league' => $league->code, 'team' => $csvName]);
 
         return $team;
+    }
+
+    /**
+     * @return Collection<int, Team>
+     */
+    private function teamsForCountry(League $league): Collection
+    {
+        return $this->teamsByCountry[$league->country] ??= Team::query()
+            ->whereHas('league', fn ($query) => $query->where('country', $league->country))
+            ->get();
     }
 
     /**

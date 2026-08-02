@@ -56,9 +56,18 @@ class FixtureSyncService
         $from = now('UTC')->subDays(self::DAYS_BACK)->startOfDay();
         $to = now('UTC')->addDays(self::DAYS_AHEAD)->endOfDay();
 
-        foreach (League::all() as $league) {
-            $matches = $this->client->competitionMatches($league->code, $from, $to);
-            $teams = $league->teams()->get();
+        // Only leagues the football-data.org plan actually carries. The rest
+        // take their upcoming fixtures from football-data.co.uk's
+        // fixtures.csv during the odds import.
+        $leagues = League::whereNotNull('footballdata_code')->orderBy('id')->get();
+
+        foreach ($leagues as $league) {
+            $matches = $this->client->competitionMatches($league->footballdata_code, $from, $to);
+            // Country-wide pool: a club promoted or relegated between two
+            // tracked divisions keeps its existing row.
+            $teams = Team::query()
+                ->whereHas('league', fn ($query) => $query->where('country', $league->country))
+                ->get();
 
             foreach ($matches as $match) {
                 $home = $this->resolveTeam($match['homeTeam'] ?? [], $league, $teams, $summary);

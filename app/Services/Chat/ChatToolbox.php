@@ -21,7 +21,24 @@ use Illuminate\Support\Facades\Validator;
  */
 class ChatToolbox
 {
-    private const LEAGUE_CODES = ['PL', 'PD', 'SA', 'BL1', 'FL1'];
+    /**
+     * Tracked league codes, read from the database so adding a league needs
+     * no code change. Cached per request — the toolbox is short-lived.
+     *
+     * @return list<string>
+     */
+    private function leagueCodes(): array
+    {
+        return $this->leagueCodes ??= League::orderBy('id')->pluck('code')->all();
+    }
+
+    /** @var list<string>|null */
+    private ?array $leagueCodes = null;
+
+    private function leagueDescription(): string
+    {
+        return 'League code, one of: '.implode(', ', $this->leagueCodes());
+    }
 
     /**
      * Gemini function declarations for every tool.
@@ -51,7 +68,7 @@ class ChatToolbox
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => [
-                        'league' => ['type' => 'STRING', 'description' => 'League code: PL, PD (La Liga), SA (Serie A), BL1 (Bundesliga), FL1 (Ligue 1)'],
+                        'league' => ['type' => 'STRING', 'description' => $this->leagueDescription()],
                         'team' => $team,
                         'days' => ['type' => 'INTEGER', 'description' => 'How many days ahead to look, 1-14 (default 7)'],
                     ],
@@ -111,7 +128,7 @@ class ChatToolbox
                     'type' => 'OBJECT',
                     'properties' => [
                         'stat' => ['type' => 'STRING', 'description' => 'One of: goals, assists, cards, shots_on_target'],
-                        'league' => ['type' => 'STRING', 'description' => 'League code: PL, PD, SA, BL1, FL1 (optional, all leagues if omitted)'],
+                        'league' => ['type' => 'STRING', 'description' => $this->leagueDescription()],
                         'season' => ['type' => 'STRING', 'description' => 'Season like "2025-2026" (optional, defaults to latest with data)'],
                     ],
                     'required' => ['stat'],
@@ -276,7 +293,7 @@ class ChatToolbox
     private function getFixtures(array $args): array
     {
         if ($error = $this->validate($args, [
-            'league' => 'nullable|string|in:'.implode(',', self::LEAGUE_CODES),
+            'league' => 'nullable|string|in:'.implode(',', $this->leagueCodes()),
             'team' => 'nullable|string|max:60',
             'days' => 'nullable|integer|min:1|max:14',
         ])) {
@@ -556,7 +573,7 @@ class ChatToolbox
     {
         if ($error = $this->validate($args, [
             'stat' => 'required|string|in:goals,assists,cards,shots_on_target',
-            'league' => 'nullable|string|in:'.implode(',', self::LEAGUE_CODES),
+            'league' => 'nullable|string|in:'.implode(',', $this->leagueCodes()),
             'season' => 'nullable|string|regex:/^\d{4}-\d{4}$/',
         ])) {
             return $error;

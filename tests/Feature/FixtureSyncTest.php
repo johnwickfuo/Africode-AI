@@ -76,8 +76,8 @@ class FixtureSyncTest extends TestCase
         $this->assertSame('https://crests.football-data.org/57.png', $arsenal->fresh()->logo_url);
 
         // One request per league, 7s throttle between consecutive requests.
-        Http::assertSentCount(5);
-        Sleep::assertSleptTimes(4);
+        Http::assertSentCount(8); // leagues carrying a footballdata_code
+        Sleep::assertSleptTimes(7); // one pause between each API-covered league
 
         $run = PipelineRun::lastSuccessfulRun('SyncFixturesJob');
         $this->assertNotNull($run);
@@ -177,19 +177,21 @@ class FixtureSyncTest extends TestCase
 
     public function test_unknown_team_is_created_so_promoted_sides_flow_after_rollover(): void
     {
+        // A club none of our seeds know — the real "promoted from outside
+        // the tracked pyramid" case now that England has four tiers seeded.
         $this->fakeApi(['PL' => [
             $this->match(['id' => 500007, 'homeTeam' => [
-                'id' => 68, 'name' => 'Norwich City FC', 'shortName' => 'Norwich',
-                'tla' => 'NOR', 'crest' => 'https://crests.football-data.org/68.png',
+                'id' => 68, 'name' => 'Sutton United FC', 'shortName' => 'Sutton',
+                'tla' => 'SUT', 'crest' => 'https://crests.football-data.org/68.png',
             ]]),
         ]]);
 
         SyncFixturesJob::dispatchSync();
 
-        $norwich = Team::where('name', 'Norwich City')->first();
+        $norwich = Team::where('name', 'Sutton United')->first();
         $this->assertNotNull($norwich, 'promoted team must be auto-created');
-        $this->assertSame('NOR', $norwich->short_name);
-        $this->assertSame('Norwich', $norwich->fbref_name); // best guess until FBref data lands
+        $this->assertSame('SUT', $norwich->short_name);
+        $this->assertSame('Sutton', $norwich->fbref_name); // best guess until FBref data lands
         $this->assertSame(68, $norwich->footballdata_id);
         $this->assertSame(1, Fixture::where('footballdata_match_id', 500007)->count());
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::latest('id')->first()->status);
