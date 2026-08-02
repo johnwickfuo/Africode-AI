@@ -23,7 +23,7 @@ class AccumulatorsController extends Controller
             ? collect()
             : Accumulator::where('generated_at', $latestGeneratedAt)
                 ->with([
-                    'legs.fixture:id,kickoff_utc,home_team_id,away_team_id',
+                    'legs.fixture:id,kickoff_utc,kickoff_confirmed,home_team_id,away_team_id',
                     'legs.fixture.homeTeam:id,short_name',
                     'legs.fixture.awayTeam:id,short_name',
                 ])
@@ -31,7 +31,7 @@ class AccumulatorsController extends Controller
                 ->get()
                 ->keyBy('target_odds');
 
-        $tiers = collect(config('africode.accas.tiers'))->map(function (int $target) use ($latest, $displayTz) {
+        $tiers = collect(config('africode.accas.tiers'))->map(function (int $target) use ($latest) {
             /** @var Accumulator|null $accumulator */
             $accumulator = $latest->get($target);
 
@@ -44,7 +44,7 @@ class AccumulatorsController extends Controller
                 'legs' => $accumulator?->legs->map(fn (AccumulatorLeg $leg) => [
                     'match' => $leg->fixture->homeTeam->short_name.' v '.$leg->fixture->awayTeam->short_name,
                     'fixture_id' => $leg->fixture_id,
-                    'kickoff' => $leg->fixture->kickoff_utc->timezone($displayTz)->isoFormat('ddd D MMM, HH:mm'),
+                    'kickoff' => $leg->fixture->kickoffLabel(),
                     'market' => $leg->market,
                     'line' => $leg->line,
                     'direction' => $leg->direction,

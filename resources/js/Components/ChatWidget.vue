@@ -84,7 +84,7 @@ const send = async (text) => {
                 </span>
                 <div class="min-w-0">
                     <p class="truncate text-sm font-bold leading-tight text-ink-100">Africode assistant</p>
-                    <p class="truncate text-[11px] text-ink-500">Top-5 leagues · 2023-24 onwards</p>
+                    <p class="truncate text-[11px] text-ink-500">12 leagues · 2023-24 onwards</p>
                 </div>
             </div>
             <button

@@ -12,7 +12,7 @@
         <meta property="og:type" content="website">
         <meta property="og:site_name" content="Africode Football AI">
         <meta property="og:title" content="Africode Football AI — data-driven football predictions">
-        <meta property="og:description" content="Model probabilities for goals, corners, cards and match results across Europe's top five leagues, with a public accuracy record.">
+        <meta property="og:description" content="Model probabilities for goals, corners, cards and match results across 12 European leagues, with a public accuracy record.">
         <meta name="twitter:card" content="summary">
 
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">

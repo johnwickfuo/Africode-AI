@@ -324,7 +324,7 @@ class ChatToolbox
                 'league' => $fixture->league->code,
                 'home' => $fixture->homeTeam->name,
                 'away' => $fixture->awayTeam->name,
-                'kickoff' => $fixture->kickoff_utc->timezone(config('africode.display_timezone'))->format('D j M H:i'),
+                'kickoff' => $fixture->kickoffLabel(),
                 'derby' => $fixture->is_derby,
                 'best_bet' => $fixture->predictions->first()?->headline_text,
             ]);
@@ -377,7 +377,7 @@ class ChatToolbox
 
         return [
             'fixture' => "{$fixture->homeTeam->name} v {$fixture->awayTeam->name}",
-            'kickoff' => $fixture->kickoff_utc->timezone(config('africode.display_timezone'))->format('D j M H:i'),
+            'kickoff' => $fixture->kickoffLabel(),
             'derby' => $fixture->is_derby,
             'best_bet' => $prediction->headline_text,
             'markets' => $prediction->markets->map(fn (PredictionMarket $market) => [

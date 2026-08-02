@@ -23,6 +23,7 @@ class Fixture extends Model
         'home_team_id',
         'away_team_id',
         'kickoff_utc',
+        'kickoff_confirmed',
         'status',
         'referee_id',
         'footballdata_match_id',
@@ -36,8 +37,21 @@ class Fixture extends Model
     {
         return [
             'kickoff_utc' => 'datetime',
+            'kickoff_confirmed' => 'boolean',
             'is_derby' => 'boolean',
         ];
+    }
+
+    /**
+     * Kickoff in the display timezone. Where the only published calendar
+     * carries a placeholder time, the date still stands but the clock does
+     * not, so it reads "TBC" rather than something confidently wrong.
+     */
+    public function kickoffLabel(string $dateFormat = 'ddd D MMM'): string
+    {
+        $local = $this->kickoff_utc->timezone(config('africode.display_timezone'));
+
+        return $local->isoFormat($dateFormat).', '.($this->kickoff_confirmed ? $local->format('H:i') : 'TBC');
     }
 
     public function league(): BelongsTo

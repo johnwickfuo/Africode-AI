@@ -57,7 +57,7 @@ const freshness = computed(() => [
                             Africode <span class="text-brand-400">Football AI</span>
                         </span>
                         <span class="hidden text-[11px] text-ink-500 sm:block">
-                            Model-driven predictions · Europe's top 5 leagues
+                            Model-driven predictions · 12 European leagues
                         </span>
                     </span>
                 </Link>

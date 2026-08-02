@@ -16,6 +16,9 @@ class LeagueSeeder extends Seeder
      *    upcoming fixtures from football-data.co.uk's fixtures.csv instead.
      *  - fdcouk_code: football-data.co.uk division file, the source of match
      *    stats and bookmaker odds for every league here.
+     *  - calendar_slug: fixturedownload.com slug, set only where the free API
+     *    tier has no fixtures — it supplies the full season calendar those
+     *    leagues would otherwise lack.
      *  - fbref_id: FBref competition id (big five only; the FBref scrape is
      *    configured for the "Big 5 European Leagues Combined" reader).
      */
@@ -34,12 +37,13 @@ class LeagueSeeder extends Seeder
             ['code' => 'DED', 'footballdata_code' => 'DED', 'fdcouk_code' => 'N1', 'name' => 'Eredivisie', 'country' => 'Netherlands', 'fbref_id' => '23'],
             ['code' => 'PPL', 'footballdata_code' => 'PPL', 'fdcouk_code' => 'P1', 'name' => 'Primeira Liga', 'country' => 'Portugal', 'fbref_id' => '32'],
 
-            // Not on the free API tier: fixtures come from fixtures.csv, so
-            // the upcoming-match horizon is roughly a week rather than 14 days.
-            ['code' => 'EL1', 'footballdata_code' => null, 'fdcouk_code' => 'E2', 'name' => 'League One', 'country' => 'England', 'fbref_id' => '15'],
-            ['code' => 'EL2', 'footballdata_code' => null, 'fdcouk_code' => 'E3', 'name' => 'League Two', 'country' => 'England', 'fbref_id' => '16'],
-            ['code' => 'SPL', 'footballdata_code' => null, 'fdcouk_code' => 'SC0', 'name' => 'Scottish Premiership', 'country' => 'Scotland', 'fbref_id' => '40'],
-            ['code' => 'TSL', 'footballdata_code' => null, 'fdcouk_code' => 'T1', 'name' => 'Süper Lig', 'country' => 'Turkey', 'fbref_id' => '26'],
+            // Not on the free API tier. Their season calendar comes from
+            // fixturedownload.com, so they carry the same 14-day upcoming
+            // horizon as everything else; fixtures.csv still prices them.
+            ['code' => 'EL1', 'footballdata_code' => null, 'fdcouk_code' => 'E2', 'calendar_slug' => 'efl-league-one', 'name' => 'League One', 'country' => 'England', 'fbref_id' => '15'],
+            ['code' => 'EL2', 'footballdata_code' => null, 'fdcouk_code' => 'E3', 'calendar_slug' => 'efl-league-two', 'name' => 'League Two', 'country' => 'England', 'fbref_id' => '16'],
+            ['code' => 'SPL', 'footballdata_code' => null, 'fdcouk_code' => 'SC0', 'calendar_slug' => 'scottish-premiership', 'name' => 'Scottish Premiership', 'country' => 'Scotland', 'fbref_id' => '40'],
+            ['code' => 'TSL', 'footballdata_code' => null, 'fdcouk_code' => 'T1', 'calendar_slug' => 'super-lig', 'name' => 'Süper Lig', 'country' => 'Turkey', 'fbref_id' => '26'],
         ];
 
         foreach ($leagues as $league) {

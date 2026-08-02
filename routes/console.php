@@ -4,6 +4,7 @@ use App\Jobs\GenerateAccumulatorsJob;
 use App\Jobs\GeneratePredictionsJob;
 use App\Jobs\ImportCsvStatsJob;
 use App\Jobs\ImportFbrefDataJob;
+use App\Jobs\ImportFixtureCalendarJob;
 use App\Jobs\ImportOddsJob;
 use App\Jobs\RecomputeProfilesJob;
 use App\Jobs\ScrapeFbrefJob;
@@ -27,6 +28,12 @@ Schedule::job(new ImportFbrefDataJob)
 // keeps stats flowing even while FBref is Cloudflare-blocked.
 Schedule::job(new ImportCsvStatsJob)
     ->dailyAt('02:30')
+    ->timezone('Africa/Lagos');
+
+// Published season calendars for the leagues the free API tier omits —
+// runs before the API sync so every league is refreshed in one pass.
+Schedule::job(new ImportFixtureCalendarJob)
+    ->dailyAt('02:50')
     ->timezone('Africa/Lagos');
 
 Schedule::job(new SyncFixturesJob)

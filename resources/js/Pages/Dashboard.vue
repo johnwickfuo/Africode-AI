@@ -51,7 +51,7 @@ const confidence = (probability) => {
         <PageHeader
             eyebrow="Next 14 days"
             title="Fixtures & Best Bets"
-            subtitle="Every upcoming match in Europe's top five leagues, with the model's strongest call on each one."
+            subtitle="Every upcoming match across 12 European leagues, with the model's strongest call on each one."
         />
 
         <!-- Snapshot -->

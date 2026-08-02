@@ -21,6 +21,7 @@ class League extends Model
         'code',
         'footballdata_code',
         'fdcouk_code',
+        'calendar_slug',
         'name',
         'country',
         'fbref_id',

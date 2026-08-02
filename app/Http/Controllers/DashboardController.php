@@ -47,7 +47,9 @@ class DashboardController extends Controller
                     'home_team' => $fixture->homeTeam->only(['name', 'short_name', 'logo_url']),
                     'away_team' => $fixture->awayTeam->only(['name', 'short_name', 'logo_url']),
                     'kickoff_date' => $fixture->kickoff_utc->timezone($displayTz)->isoFormat('dddd D MMMM'),
-                    'kickoff_time' => $fixture->kickoff_utc->timezone($displayTz)->format('H:i'),
+                    'kickoff_time' => $fixture->kickoff_confirmed
+                        ? $fixture->kickoff_utc->timezone($displayTz)->format('H:i')
+                        : 'TBC',
                     'matchday' => $fixture->matchday,
                     'is_derby' => $fixture->is_derby,
                     'best_bet' => $prediction === null ? null : [

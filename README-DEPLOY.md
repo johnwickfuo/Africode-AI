@@ -90,14 +90,24 @@ Laravel's `public/` folder is ever web-served; the repo root (with `.env`,
 |---|---|---|---|
 | Premier League, La Liga, Serie A, Bundesliga, Ligue 1 | football-data.org (14 days) | football-data.co.uk | xG from Understat |
 | Championship, Eredivisie, Primeira Liga | football-data.org (14 days) | football-data.co.uk | no xG |
-| League One, League Two, Scottish Premiership, Süper Lig | fixtures.csv (~1 week) | football-data.co.uk | no xG; not on the free API tier |
+| League One, League Two, Scottish Premiership, Süper Lig | fixturedownload.com (full season) | football-data.co.uk | no xG; not on the free API tier |
+
+The free football-data.org tier carries 13 competitions, so four of the
+tracked divisions have no API fixtures. They used to depend on
+football-data.co.uk's `fixtures.csv`, which is a **~3-day rolling
+window** — a league whose season had not started yet showed nothing at
+all. They now take their schedule from fixturedownload.com, a free
+keyless CSV of the complete published season, so every league carries the
+same horizon. `fixtures.csv` still prices them.
 
 Referees are published for the English and Scottish divisions only;
 elsewhere the cards model falls back to the league-average referee and
 lowers its confidence accordingly. Adding another league is a data
 change: give it a row in `LeagueSeeder` with an `fdcouk_code` (see
 football-data.co.uk for the division letter) and, if the free API tier
-carries it, a `footballdata_code`.
+carries it, a `footballdata_code`. If it does not, add a `calendar_slug`
+— the slug fixturedownload.com uses in its download URL, e.g.
+`super-lig` for `.../download/super-lig-2026-UTC.csv`.
 
 ## 4. Configure .env
 
@@ -204,6 +214,7 @@ sudo -u admin php artisan africode:import-csv-stats --now      # 15 small CSVs, 
 sudo -u admin php artisan africode:scrape-understat --now --batch=800   # player data + xG, ~20 min per run
 sudo -u admin php artisan africode:recompute-profiles --now    # team/referee profiles
 sudo -u admin php artisan africode:sync-fixtures --now         # fixtures for the next 14 days
+sudo -u admin php artisan africode:import-fixture-calendar --now  # full season for the four non-API leagues
 sudo -u admin php artisan africode:generate-predictions --now  # predictions, if fixtures exist
 ```
 
@@ -242,6 +253,7 @@ the file.
 | 02:00 | `ScrapeFbrefJob`         | FBref team match logs → `storage/app/pipeline/fbref_latest.json` |
 | 02:30 | `ImportCsvStatsJob`      | football-data.co.uk CSVs → results, corners/cards/shots stats, referees (never overwrites FBref rows) |
 | 02:45 | `ImportFbrefDataJob`     | JSON → `match_stats`, results, referees |
+| 02:50 | `ImportFixtureCalendarJob` | fixturedownload.com: full published season for the leagues the free API tier omits |
 | 03:00 | `SyncFixturesJob`        | football-data.org: next 14 days + last 3 days (7s between requests) |
 | 03:15 | `RecomputeProfilesJob`   | team + referee rolling profiles |
 | 03:30 | `SettlePredictionsJob`   | scores pending picks, refreshes `model_accuracy` |

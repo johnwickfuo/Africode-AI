@@ -40,7 +40,11 @@ class MatchDetailController extends Controller
                 'status' => $fixture->status,
                 'is_derby' => $fixture->is_derby,
                 'kickoff_date' => $fixture->kickoff_utc->timezone($displayTz)->isoFormat('dddd D MMMM YYYY'),
-                'kickoff_time' => $fixture->kickoff_utc->timezone($displayTz)->format('H:i'),
+                // Some published calendars carry the date but a placeholder
+                // time; showing "TBC" beats showing a time that is wrong.
+                'kickoff_time' => $fixture->kickoff_confirmed
+                    ? $fixture->kickoff_utc->timezone($displayTz)->format('H:i')
+                    : 'TBC',
                 'home_goals' => $fixture->home_goals,
                 'away_goals' => $fixture->away_goals,
                 'home_team' => $fixture->homeTeam->only(['id', 'name', 'short_name', 'logo_url']),
