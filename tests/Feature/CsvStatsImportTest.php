@@ -132,13 +132,47 @@ class CsvStatsImportTest extends TestCase
 
         $summary = app(CsvStatsImportService::class)->run(['2526']);
 
-        $this->assertSame(1, $summary['stats_skipped_fbref']);
         $arsenalStats = MatchStat::where('team_id', $arsenal->id)->first();
         $this->assertSame('fbref', $arsenalStats->source);
         $this->assertSame(1.9, $arsenalStats->xg, 'FBref xG must survive');
         $this->assertSame(6, $arsenalStats->corners_for, 'FBref corners must survive');
         // Chelsea had no fbref row, so the CSV filled it.
         $this->assertSame('fdcouk', MatchStat::where('team_id', $chelsea->id)->first()->source);
+    }
+
+    public function test_fills_gaps_a_partial_fbref_scrape_left_behind(): void
+    {
+        // Production case: FBref's per-stat tables were blocked, so the row
+        // carried only goals and xG from the schedule. The CSV has corners,
+        // cards, fouls and shots — it must fill those without touching xG.
+        $arsenal = Team::where('name', 'Arsenal')->first();
+        $chelsea = Team::where('name', 'Chelsea')->first();
+        $fixture = Fixture::create([
+            'league_id' => $arsenal->league_id, 'season' => '2025-2026',
+            'home_team_id' => $arsenal->id, 'away_team_id' => $chelsea->id,
+            'kickoff_utc' => '2025-08-16 15:00:00', 'status' => 'finished',
+            'home_goals' => 2, 'away_goals' => 1,
+        ]);
+        MatchStat::create([
+            'fixture_id' => $fixture->id, 'team_id' => $arsenal->id, 'is_home' => true,
+            'goals' => 2, 'xg' => 1.9, 'source' => 'fbref',
+        ]);
+
+        $this->fakeCsv(['2526/E0' => [
+            'E0,16/08/2025,15:00,Arsenal,Chelsea,2,1,H,,15,9,7,4,8,10,9,3,1,2,0,0',
+        ]]);
+
+        $summary = app(CsvStatsImportService::class)->run(['2526']);
+
+        $this->assertGreaterThan(0, $summary['stats_gaps_filled']);
+
+        $row = MatchStat::where('team_id', $arsenal->id)->first();
+        $this->assertSame('fbref', $row->source, 'ownership stays with the richer source');
+        $this->assertSame(1.9, $row->xg, 'FBref xG untouched');
+        $this->assertSame(9, $row->corners_for, 'corners filled from the CSV');
+        $this->assertSame(7, $row->shots_on_target, 'shots on target filled');
+        $this->assertSame(8, $row->fouls_committed, 'fouls filled');
+        $this->assertSame(1, $row->yellows, 'cards filled');
     }
 
     public function test_referee_initial_matches_existing_full_name(): void

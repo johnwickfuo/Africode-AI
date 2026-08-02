@@ -70,7 +70,7 @@ class CsvStatsImportService
 
     /**
      * @param  list<string>|null  $seasonKeys  e.g. ["2324","2425","2526"]; null = tracked window
-     * @return array{fixtures_created: int, fixtures_updated: int, stats_rows: int, stats_skipped_fbref: int, teams_created: int, files_failed: int, rows_wrong_season: int}
+     * @return array{fixtures_created: int, fixtures_updated: int, stats_rows: int, stats_gaps_filled: int, stats_skipped_fbref: int, teams_created: int, files_failed: int, rows_wrong_season: int}
      */
     public function run(?array $seasonKeys = null): array
     {
@@ -78,8 +78,8 @@ class CsvStatsImportService
 
         $summary = [
             'fixtures_created' => 0, 'fixtures_updated' => 0, 'stats_rows' => 0,
-            'stats_skipped_fbref' => 0, 'teams_created' => 0, 'files_failed' => 0,
-            'rows_wrong_season' => 0,
+            'stats_gaps_filled' => 0, 'stats_skipped_fbref' => 0, 'teams_created' => 0,
+            'files_failed' => 0, 'rows_wrong_season' => 0,
         ];
 
         $leagues = League::all()->keyBy('code');
@@ -204,34 +204,51 @@ class CsvStatsImportService
 
     private function upsertStats(Fixture $fixture, Team $team, bool $isHome, array $row, array &$summary): void
     {
-        // Never overwrite an FBref row — it carries xG/crosses/possession
-        // that these CSVs don't have.
+        $column = fn (string $homeCol, string $awayCol) => $isHome ? $row[$homeCol] ?? null : $row[$awayCol] ?? null;
+        $value = fn (?string $raw) => is_numeric($raw) ? (int) $raw : null;
+
+        $stats = [
+            'goals' => $value($column('FTHG', 'FTAG')),
+            'shots' => $value($column('HS', 'AS')),
+            'shots_on_target' => $value($column('HST', 'AST')),
+            'shots_on_target_against' => $value($column('AST', 'HST')),
+            'corners_for' => $value($column('HC', 'AC')),
+            'corners_against' => $value($column('AC', 'HC')),
+            'fouls_committed' => $value($column('HF', 'AF')),
+            'fouls_drawn' => $value($column('AF', 'HF')),
+            'yellows' => $value($column('HY', 'AY')),
+            'reds' => $value($column('HR', 'AR')),
+        ];
+
         $existing = MatchStat::where('fixture_id', $fixture->id)->where('team_id', $team->id)->first();
+
+        // A richer source (FBref) owns this row: never overwrite what it
+        // recorded, but DO fill the gaps it left. A partial FBref scrape —
+        // schedule only, stat tables blocked — otherwise leaves corners,
+        // cards, fouls and shots permanently blank even though these CSVs
+        // carry them.
         if ($existing !== null && $existing->source !== self::SOURCE) {
-            $summary['stats_skipped_fbref']++;
+            $filled = 0;
+            foreach ($stats as $field => $value) {
+                if ($value !== null && $existing->{$field} === null) {
+                    $existing->{$field} = $value;
+                    $filled++;
+                }
+            }
+
+            if ($filled > 0) {
+                $existing->save();
+                $summary['stats_gaps_filled'] += $filled;
+            } else {
+                $summary['stats_skipped_fbref']++;
+            }
 
             return;
         }
 
-        $column = fn (string $homeCol, string $awayCol) => $isHome ? $row[$homeCol] ?? null : $row[$awayCol] ?? null;
-        $value = fn (?string $raw) => is_numeric($raw) ? (int) $raw : null;
-
         MatchStat::updateOrCreate(
             ['fixture_id' => $fixture->id, 'team_id' => $team->id],
-            [
-                'is_home' => $isHome,
-                'goals' => $value($column('FTHG', 'FTAG')),
-                'shots' => $value($column('HS', 'AS')),
-                'shots_on_target' => $value($column('HST', 'AST')),
-                'shots_on_target_against' => $value($column('AST', 'HST')),
-                'corners_for' => $value($column('HC', 'AC')),
-                'corners_against' => $value($column('AC', 'HC')),
-                'fouls_committed' => $value($column('HF', 'AF')),
-                'fouls_drawn' => $value($column('AF', 'HF')),
-                'yellows' => $value($column('HY', 'AY')),
-                'reds' => $value($column('HR', 'AR')),
-                'source' => self::SOURCE,
-            ],
+            $stats + ['is_home' => $isHome, 'source' => self::SOURCE],
         );
 
         $summary['stats_rows']++;

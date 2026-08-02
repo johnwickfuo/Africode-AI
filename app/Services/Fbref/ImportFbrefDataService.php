@@ -72,6 +72,19 @@ class ImportFbrefDataService
             'teams_created' => 0,
         ];
 
+        // Each stat table is a separate FBref request that can be blocked on
+        // its own. When they fail the scrape still yields goals and xG from
+        // the schedule, so a degraded run looks successful — surface it in
+        // the pipeline summary instead, and let the CSV import fill the gaps.
+        $failedTables = $payload['failed_stat_tables'] ?? [];
+        if ($failedTables !== []) {
+            $summary['failed_stat_tables'] = implode(',', $failedTables);
+            Log::warning('FBref scrape was partial — some stat tables were unavailable', [
+                'failed_stat_tables' => $failedTables,
+                'affected' => 'corners, crosses, cards, fouls, shots and possession may be missing',
+            ]);
+        }
+
         $leagues = League::all()->keyBy('code');
         $this->teamCache = [];
 
