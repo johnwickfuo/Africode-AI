@@ -155,6 +155,13 @@ class GeneratePredictionsTest extends TestCase
         $this->assertGreaterThanOrEqual(0.5, $prediction->best_bet_probability);
         $this->assertLessThanOrEqual(0.92, $prediction->best_bet_probability, 'triviality ceiling respected');
 
+        // The headline must be a bet a mainstream bookmaker actually prices.
+        $this->assertContains($prediction->best_bet_market, config('africode.markets.bettable'));
+        $this->assertTrue(
+            $prediction->best_bet_line === null || $prediction->best_bet_line >= 1.5,
+            'sub-1.5 lines pay too little to headline',
+        );
+
         $markets = PredictionMarket::where('prediction_id', $prediction->id)->get();
         $this->assertSame(39, $markets->count(), '1 result + 5+1+3+3 goals/btts + 5+3+3 corners + 4 cards + 3+4+4 SoT');
         $this->assertEqualsCanonicalizing(

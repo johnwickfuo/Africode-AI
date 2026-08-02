@@ -85,6 +85,8 @@ class GeneratePredictionsService
             'config' => [
                 'best_bet_min_prob' => config('africode.best_bet.min_prob'),
                 'best_bet_max_prob' => config('africode.best_bet.max_prob'),
+                'bettable_markets' => config('africode.markets.bettable'),
+                'min_headline_line' => config('africode.markets.min_headline_line'),
             ],
             'league_averages' => $this->leagueAverages(),
             'training' => $this->challengerTrainingRows(),

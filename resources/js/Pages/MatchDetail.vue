@@ -30,6 +30,7 @@ const sections = computed(() => {
     if (!props.prediction) return [];
     return MARKET_SECTIONS.map((section) => ({
         title: section.title,
+        hint: section.hint ?? null,
         rows: props.prediction.markets
             .filter((row) => section.markets.includes(row.market))
             .sort(
@@ -191,7 +192,7 @@ const isFinished = computed(() => props.fixture.status === 'finished');
 
             <!-- Markets -->
             <section v-for="section in sections" :key="section.title" class="mb-6">
-                <SectionHeading :title="section.title" />
+                <SectionHeading :title="section.title" :hint="section.hint" />
                 <div class="card divide-y divide-ink-800/70">
                     <div
                         v-for="row in section.rows"

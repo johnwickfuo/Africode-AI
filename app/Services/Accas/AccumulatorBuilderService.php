@@ -93,6 +93,10 @@ class AccumulatorBuilderService
     {
         $minProb = (float) config('africode.accas.leg_min_prob');
         $maxProb = (float) config('africode.accas.leg_max_prob');
+        // A ticket is only useful if every leg can be placed, so legs come
+        // from the same bettable-market list the Best Bet uses.
+        $bettable = config('africode.markets.bettable');
+        $minLine = config('africode.markets.min_headline_line');
 
         $fixtures = Fixture::upcoming()
             ->where('kickoff_utc', '<=', now('UTC')->addDays((int) config('africode.predict.days_ahead')))
@@ -103,7 +107,7 @@ class AccumulatorBuilderService
             ->get();
 
         return $fixtures
-            ->flatMap(function (Fixture $fixture) use ($minProb, $maxProb) {
+            ->flatMap(function (Fixture $fixture) use ($minProb, $maxProb, $bettable, $minLine) {
                 /** @var Prediction|null $prediction */
                 $prediction = $fixture->predictions->first();
                 if ($prediction === null) {
@@ -112,6 +116,10 @@ class AccumulatorBuilderService
 
                 return $prediction->markets()
                     ->whereBetween('probability', [$minProb, $maxProb])
+                    ->when($bettable !== null, fn ($query) => $query->whereIn('market', $bettable))
+                    ->when($minLine !== null, fn ($query) => $query->where(
+                        fn ($q) => $q->whereNull('line')->orWhere('line', '>=', $minLine),
+                    ))
                     ->get()
                     ->map(fn ($market) => [
                         'prediction_market_id' => $market->id,

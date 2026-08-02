@@ -15,13 +15,23 @@ export const MARKET_LABELS = {
     team_sot_away: 'Away team shots on target',
 };
 
-// Section layout for the match-detail page (spec 8.2).
+// Section layout for the match-detail page (spec 8.2). `hint` warns where
+// mainstream bookmakers rarely price a market — those never headline a
+// fixture or fill an accumulator leg, but the model's view is still shown.
 export const MARKET_SECTIONS = [
     { title: 'Match Result', markets: ['result'] },
     { title: 'Goals', markets: ['goals', 'btts', 'team_goals_home', 'team_goals_away'] },
-    { title: 'Corners', markets: ['corners', 'team_corners_home', 'team_corners_away'] },
+    {
+        title: 'Corners',
+        markets: ['corners', 'team_corners_home', 'team_corners_away'],
+        hint: 'Team corner lines are not offered by every bookmaker.',
+    },
     { title: 'Cards', markets: ['cards'] },
-    { title: 'Shots on Target', markets: ['shots_on_target', 'team_sot_home', 'team_sot_away'] },
+    {
+        title: 'Shots on Target',
+        markets: ['shots_on_target', 'team_sot_home', 'team_sot_away'],
+        hint: 'Model view only — most African bookmakers do not price shots on target.',
+    },
 ];
 
 export function marketLabel(market) {

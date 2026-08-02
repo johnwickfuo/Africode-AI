@@ -369,15 +369,36 @@ def selection_score(row, referee_known):
     return score
 
 
+def is_bettable(row, config):
+    """A headline pick must be one a mainstream bookmaker actually prices.
+
+    Shots-on-target markets are modelled and shown, but few African books
+    offer them, and a Best Bet nobody can place is worse than no Best Bet.
+    Very low lines ("over 0.5 goals") are dropped for the same reason: they
+    are available but pay so little that headlining one looks like filler.
+    """
+    bettable = config.get("bettable_markets")
+    if bettable is not None and row["market"] not in bettable:
+        return False
+
+    min_line = config.get("min_headline_line")
+    if min_line is not None and row["line"] is not None and row["line"] < min_line:
+        return False
+
+    return True
+
+
 def select_best_bet(rows, referee_known, config):
     min_prob = config.get("best_bet_min_prob", 0.62)
     max_prob = config.get("best_bet_max_prob", 0.92)
 
-    candidates = [r for r in rows if min_prob <= r["probability"] <= max_prob]
+    placeable = [r for r in rows if is_bettable(r, config)] or rows
+
+    candidates = [r for r in placeable if min_prob <= r["probability"] <= max_prob]
     if not candidates:
         # Nothing in the window (rare): relax the floor, keep the triviality
         # ceiling so "over 0.5 corners" style picks never headline.
-        candidates = [r for r in rows if r["probability"] <= max_prob] or rows
+        candidates = [r for r in placeable if r["probability"] <= max_prob] or placeable
 
     return max(
         candidates,

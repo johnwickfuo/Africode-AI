@@ -186,6 +186,30 @@ class AccumulatorsTest extends TestCase
         $this->assertTrue($probabilities->every(fn ($p) => $p >= 0.55 && $p <= 0.92));
     }
 
+    public function test_legs_only_use_markets_bookmakers_price(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        // Shots-on-target picks are strong but unplaceable at most African
+        // books; a corners pick in the same fixture must be chosen instead.
+        foreach ([0, 1, 2, 3] as $offset) {
+            $this->predictedFixture([
+                'shots_on_target|8.5|over' => 0.60,
+                'team_sot_home|4.5|over' => 0.62,
+                'team_goals_home|0.5|over' => 0.75,
+                'corners|9.5|over' => 0.64,
+            ], $offset);
+        }
+
+        app(AccumulatorBuilderService::class)->run();
+
+        $this->assertGreaterThan(0, AccumulatorLeg::count(), 'a ticket should still be built');
+
+        $markets = AccumulatorLeg::pluck('market')->unique();
+        $this->assertSame(['corners'], $markets->values()->all(),
+            'only bettable markets, and no sub-1.5 line');
+    }
+
     public function test_settlement_resolves_accas_from_leg_outcomes(): void
     {
         config(['africode.accas.tiers' => [3]]);

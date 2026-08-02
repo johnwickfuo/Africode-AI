@@ -85,6 +85,26 @@ return [
         ],
     ],
 
+    // A pick is only worth headlining if a punter can actually place it.
+    // Mainstream books (SportyBet, Bet9ja, 1xBet, MSport) reliably price
+    // match result, goals, BTTS, corners, cards and team goals; shots on
+    // target — team-level especially — is largely a Bet365/Pinnacle market,
+    // so those rows stay visible on the match page but never headline a
+    // fixture or fill an accumulator leg.
+    'markets' => [
+        'bettable' => [
+            'result',
+            'goals',
+            'btts',
+            'corners',
+            'cards',
+            'team_goals_home',
+            'team_goals_away',
+        ],
+        // Lines this low pay ~1.05 and read as filler even when available.
+        'min_headline_line' => 1.5,
+    ],
+
     // Best Bet eligibility window (spec section 7.5).
     'best_bet' => [
         'min_prob' => (float) env('BEST_BET_MIN_PROB', 0.62),
