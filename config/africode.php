@@ -127,6 +127,21 @@ return [
         // keeps trivial "over 0.5 goals" legs out (same ethos as Best Bets).
         'leg_min_prob' => 0.55,
         'leg_max_prob' => 0.92,
+
+        // "Banker" tickets: a big total built only from short, high-
+        // probability legs, so no single result carries the ticket. Each
+        // cap is the most a single leg may pay — 1.25 means every leg is
+        // an 80%+ call — and each is offered at four target totals.
+        //
+        // The arithmetic is unforgiving: 20x from 1.25 legs needs at least
+        // 14 of them and realistically closer to 20, one per fixture, so
+        // the tighter caps only fill on a busy weekend. Tiers the card
+        // cannot reach are shown as unavailable rather than padded out.
+        'banker' => [
+            'caps' => [1.25, 1.40, 1.60],
+            'targets' => [20, 40, 80, 160],
+            'max_legs' => 25,
+        ],
     ],
 
     // Optional single password protecting the whole app (Phase 1, no auth).

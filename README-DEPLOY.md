@@ -261,7 +261,27 @@ the file.
 | 04:30 | `ScrapePlayerStatsJob`   | FBref player stats (adds shots-on-target) — only runs when `FBREF_PROXY` is set |
 | 05:45 | `ImportOddsJob`          | bookmaker odds for upcoming fixtures (free fixtures.csv) — powers the value-bet comparison |
 | 06:00 | `GeneratePredictionsJob` | runs the champion model (all markets incl. 1X2) and the ML challenger for the next 7 days of fixtures |
-| 06:30 | `GenerateAccumulatorsJob` | builds the daily 3x-10000x accumulator set from the fresh predictions |
+| 06:30 | `GenerateAccumulatorsJob` | builds the daily accumulator set: classic 3x-10000x plus the banker tickets |
+
+### Accumulator families
+
+Two sets are built each morning, from the same pool of picks but with
+separate ledgers, so a classic and a banker ticket may land on the same
+call while no two tickets inside one family ever do.
+
+| Family | Tickets | Rule |
+|---|---|---|
+| Classic | 3x, 10x, 20x, 50x, 100x, 1000x, 10000x | any leg price; a few long calls carry the total |
+| Banker | 20x, 40x, 80x, 160x at each of three caps | no leg longer than 1.25, 1.40 or 1.60 |
+
+A banker cap is a ceiling on what one leg may pay, so 1.25 means every leg
+is an 80%+ call. That forces long tickets — 20x out of 1.25 legs needs at
+least 14 of them, one per fixture — so the tighter rows only fill on a
+busy card. Simulated against a realistic weekend the whole grid builds
+except 1.25/160x; on a 15-fixture midweek card about half of it does.
+Tiers the card cannot reach are shown as unavailable rather than padded
+with weaker legs. Tuning lives in `config/africode.php` under
+`accas.banker` (`caps`, `targets`, `max_legs`, default 25).
 
 ### Player-stats backfill
 

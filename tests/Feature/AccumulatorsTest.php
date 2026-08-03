@@ -26,6 +26,10 @@ class AccumulatorsTest extends TestCase
         parent::setUp();
 
         $this->seed();
+
+        // Most tests here are about the classic family; banker tickets get
+        // their own cases and would otherwise drain the shared fixture pool.
+        config(['africode.accas.banker.caps' => []]);
     }
 
     /**
@@ -73,6 +77,60 @@ class AccumulatorsTest extends TestCase
         }
 
         return $fixture;
+    }
+
+    /**
+     * `$count` upcoming fixtures across the whole seeded club list, each
+     * carrying the same markets — enough to feed a 20-leg banker ticket.
+     *
+     * @param  array<string, float>  $markets
+     * @return list<Fixture>
+     */
+    private function manyPredictedFixtures(int $count, array $markets): array
+    {
+        $teams = Team::orderBy('id')->get();
+        $fixtures = [];
+
+        foreach (range(0, $count - 1) as $offset) {
+            $home = $teams[$offset * 2];
+            $away = $teams[$offset * 2 + 1];
+
+            $fixture = Fixture::create([
+                'league_id' => $home->league_id,
+                'season' => '2025-2026',
+                'home_team_id' => $home->id,
+                'away_team_id' => $away->id,
+                'kickoff_utc' => now('UTC')->addDays(2)->addMinutes($offset),
+                'status' => Fixture::STATUS_SCHEDULED,
+            ]);
+
+            $prediction = Prediction::create([
+                'fixture_id' => $fixture->id,
+                'generated_at' => now()->subHour(),
+                'model_version' => 'v1.1.0',
+                'best_bet_market' => 'goals',
+                'best_bet_line' => 2.5,
+                'best_bet_direction' => 'over',
+                'best_bet_probability' => 0.7,
+                'headline_text' => 'test',
+            ]);
+
+            foreach ($markets as $key => $probability) {
+                [$market, $line, $direction] = explode('|', $key);
+                PredictionMarket::create([
+                    'prediction_id' => $prediction->id,
+                    'market' => $market,
+                    'line' => $line === '' ? null : (float) $line,
+                    'direction' => $direction,
+                    'probability' => $probability,
+                    'confidence_margin' => abs($probability - 0.5),
+                ]);
+            }
+
+            $fixtures[] = $fixture;
+        }
+
+        return $fixtures;
     }
 
     public function test_accas_reach_target_and_share_no_fixture_market_call(): void
@@ -210,6 +268,89 @@ class AccumulatorsTest extends TestCase
             'only bettable markets, and no sub-1.5 line');
     }
 
+    public function test_banker_ticket_reaches_its_target_using_only_short_legs(): void
+    {
+        config([
+            'africode.accas.tiers' => [],
+            'africode.accas.banker.caps' => [1.25],
+            'africode.accas.banker.targets' => [20],
+            'africode.accas.banker.max_legs' => 25,
+        ]);
+
+        // Each fixture offers a 0.85 pick (fair odds 1.18, inside the cap)
+        // and a much longer 0.60 pick that the cap must exclude.
+        $this->manyPredictedFixtures(25, [
+            'goals|2.5|over' => 0.85,
+            'corners|9.5|over' => 0.60,
+        ]);
+
+        $summary = app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame(['1.25/20x'], $summary['banker']['built']);
+
+        $acca = Accumulator::with('legs')->firstOrFail();
+        $this->assertSame(Accumulator::FAMILY_BANKER, $acca->family);
+        $this->assertSame(1.25, $acca->max_leg_odds);
+        $this->assertGreaterThanOrEqual(20, $acca->combined_odds);
+
+        // Nothing longer than the cap, so it takes a lot of legs: the 1.667
+        // corners pick would have got there in six.
+        $this->assertTrue($acca->legs->every(fn ($leg) => (float) $leg->odds <= 1.25));
+        $this->assertSame(['goals'], $acca->legs->pluck('market')->unique()->values()->all());
+        $this->assertGreaterThan(15, $acca->legs_count);
+        $this->assertLessThanOrEqual(25, $acca->legs_count);
+    }
+
+    public function test_banker_tier_is_skipped_rather_than_exceeding_the_leg_ceiling(): void
+    {
+        config([
+            'africode.accas.tiers' => [],
+            'africode.accas.banker.caps' => [1.25],
+            'africode.accas.banker.targets' => [20],
+            'africode.accas.banker.max_legs' => 10,
+        ]);
+
+        // Ten 1.18 legs multiply to about 5.1 — the card cannot reach 20x
+        // within the ceiling, so the ticket is not offered at all.
+        $this->manyPredictedFixtures(25, ['goals|2.5|over' => 0.85]);
+
+        $summary = app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame(['1.25/20x'], $summary['banker']['skipped']);
+        $this->assertSame(0, Accumulator::count());
+    }
+
+    public function test_families_keep_separate_ledgers_but_stay_distinct_inside_themselves(): void
+    {
+        config([
+            'africode.accas.tiers' => [3],
+            'africode.accas.banker.caps' => [1.25],
+            'africode.accas.banker.targets' => [20, 40],
+            'africode.accas.banker.max_legs' => 25,
+        ]);
+
+        $this->manyPredictedFixtures(25, ['goals|2.5|over' => 0.85]);
+
+        app(AccumulatorBuilderService::class)->run();
+
+        $classic = Accumulator::where('family', Accumulator::FAMILY_CLASSIC)->with('legs')->firstOrFail();
+        $banker = Accumulator::where('family', Accumulator::FAMILY_BANKER)->with('legs')->firstOrFail();
+
+        // Separate ledgers: the two families are allowed to land on the same
+        // call, because nobody backs a classic and a banker ticket as a pair.
+        $shared = $classic->legs->pluck('prediction_market_id')
+            ->intersect($banker->legs->pluck('prediction_market_id'));
+        $this->assertNotEmpty($shared, 'families should be free to reuse each other picks');
+
+        // Inside the banker family the old rule still holds, which is also
+        // why the 40x rung has nothing left to build from here.
+        $bankerCalls = AccumulatorLeg::whereIn(
+            'accumulator_id',
+            Accumulator::where('family', Accumulator::FAMILY_BANKER)->pluck('id'),
+        )->get()->map(fn ($leg) => $leg->fixture_id.'|'.$leg->market);
+        $this->assertSame($bankerCalls->count(), $bankerCalls->unique()->count());
+    }
+
     public function test_settlement_resolves_accas_from_leg_outcomes(): void
     {
         config(['africode.accas.tiers' => [3]]);
@@ -250,9 +391,13 @@ class AccumulatorsTest extends TestCase
         $this->assertSame('lost', $acca2->fresh()->outcome);
     }
 
-    public function test_page_shows_tiers_with_unavailable_states_and_record(): void
+    public function test_page_shows_both_families_with_unavailable_states(): void
     {
-        config(['africode.accas.tiers' => [3, 10000]]);
+        config([
+            'africode.accas.tiers' => [3, 10000],
+            'africode.accas.banker.caps' => [1.25, 1.60],
+            'africode.accas.banker.targets' => [20, 40],
+        ]);
 
         $this->predictedFixture(['goals|2.5|over' => 0.55], 0);
         $this->predictedFixture(['goals|2.5|over' => 0.55], 1);
@@ -262,12 +407,26 @@ class AccumulatorsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Accumulators', false)
-                ->count('tiers', 2)
-                ->where('tiers.0.target', 3)
-                ->where('tiers.0.available', true)
-                ->count('tiers.0.legs', 2)
-                ->where('tiers.1.target', 10000)
-                ->where('tiers.1.available', false)
+                ->count('families', 2)
+                // Classic: one group holding every configured tier.
+                ->where('families.0.key', 'classic')
+                ->count('families.0.groups', 1)
+                ->count('families.0.groups.0.tickets', 2)
+                ->where('families.0.groups.0.tickets.0.target', 3)
+                ->where('families.0.groups.0.tickets.0.available', true)
+                ->count('families.0.groups.0.tickets.0.legs', 2)
+                ->where('families.0.groups.0.tickets.1.target', 10000)
+                ->where('families.0.groups.0.tickets.1.available', false)
+                // Banker: one group per cap, each offering every target.
+                ->where('families.1.key', 'banker')
+                ->count('families.1.groups', 2)
+                ->where('families.1.groups.0.label', 'Max 1.25 per leg')
+                ->count('families.1.groups.0.tickets', 2)
+                ->where('families.1.groups.0.tickets.0.max_leg_odds', 1.25)
+                // Two 1.82 legs cannot reach 20x, let alone inside the cap.
+                ->where('families.1.groups.0.tickets.0.available', false)
+                ->where('families.1.groups.1.label', 'Max 1.60 per leg')
+                ->has('max_legs')
             );
     }
 

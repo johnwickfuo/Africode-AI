@@ -15,8 +15,16 @@ class Accumulator extends Model
 
     public const OUTCOME_VOID = 'void';
 
+    /** Target-odds tickets with no ceiling on what one leg may pay. */
+    public const FAMILY_CLASSIC = 'classic';
+
+    /** Big totals assembled only from short, high-probability legs. */
+    public const FAMILY_BANKER = 'banker';
+
     protected $fillable = [
         'generated_at',
+        'family',
+        'max_leg_odds',
         'target_odds',
         'combined_odds',
         'combined_probability',
@@ -32,6 +40,7 @@ class Accumulator extends Model
             'settled_at' => 'datetime',
             'combined_odds' => 'float',
             'combined_probability' => 'float',
+            'max_leg_odds' => 'float',
         ];
     }
 

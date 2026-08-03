@@ -6,19 +6,29 @@ use App\Models\Accumulator;
 use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
 use App\Models\Prediction;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Builds the daily accumulator set from the latest predictions, one acca
- * per target-odds tier (3x ... 10000x), using model fair odds (1/p).
+ * Builds the daily accumulator set from the latest predictions, using model
+ * fair odds (1/p), in two families:
+ *
+ *  - classic: one ticket per target-odds tier (3x ... 10000x), legs of any
+ *    price, so a handful of long legs can carry the total.
+ *  - banker: the same targets reached only with short legs. Each cap is the
+ *    most a single leg may pay (1.25 = an 80%+ call), which forces long
+ *    tickets — 20x from 1.25 legs takes at least 14 of them — so leg counts
+ *    are capped and unreachable tiers are simply not offered.
  *
  * Separation rules (within a generation run):
- *  - The conflict unit is (fixture, market): once any acca carries a pick
- *    from a fixture's market, no other acca may use ANY pick from that same
- *    fixture+market — same line, the opposite direction, or a nearby line
- *    are all the same call. Other markets of that fixture stay available.
+ *  - The conflict unit is (fixture, market): once an acca carries a pick
+ *    from a fixture's market, no other acca IN THE SAME FAMILY may use ANY
+ *    pick from that same fixture+market — same line, the opposite
+ *    direction, or a nearby line are all the same call. Other markets of
+ *    that fixture stay available. The two families keep separate ledgers,
+ *    so a banker ticket and a classic ticket may land on the same call.
  *  - Within a single acca, at most one leg per fixture (same-match legs are
  *    correlated, which would overstate the combined odds).
  *
@@ -34,53 +44,147 @@ use Illuminate\Support\Facades\Log;
 class AccumulatorBuilderService
 {
     /**
-     * @return array{built: list<int>, skipped: list<int>, legs: int}
+     * @return array{built: list<int>, skipped: list<int>, legs: int, banker: array{built: list<string>, skipped: list<string>}}
      */
     public function run(): array
     {
         $pool = $this->legPool();
         $generatedAt = now();
 
-        $summary = ['built' => [], 'skipped' => [], 'legs' => 0];
-        $usedFixtureMarkets = [];
+        $summary = [
+            'built' => [], 'skipped' => [], 'legs' => 0,
+            'banker' => ['built' => [], 'skipped' => []],
+        ];
 
+        $classicUsed = [];
         foreach (config('africode.accas.tiers') as $target) {
-            $legs = $this->buildTier((int) $target, $pool, $usedFixtureMarkets);
+            $built = $this->buildAndStore(
+                target: (int) $target,
+                pool: $pool,
+                usedFixtureMarkets: $classicUsed,
+                generatedAt: $generatedAt,
+                family: Accumulator::FAMILY_CLASSIC,
+                maxLegOdds: null,
+                maxLegs: null,
+            );
 
-            if ($legs === null) {
+            if ($built === null) {
                 $summary['skipped'][] = (int) $target;
 
                 continue;
             }
 
-            DB::transaction(function () use ($legs, $target, $generatedAt) {
-                $combinedOdds = array_product(array_column($legs, 'odds'));
-
-                $accumulator = Accumulator::create([
-                    'generated_at' => $generatedAt,
-                    'target_odds' => $target,
-                    'combined_odds' => round($combinedOdds, 2),
-                    'combined_probability' => round(1 / $combinedOdds, 8),
-                    'legs_count' => count($legs),
-                ]);
-
-                foreach ($legs as $leg) {
-                    AccumulatorLeg::create(['accumulator_id' => $accumulator->id] + collect($leg)->only([
-                        'prediction_market_id', 'fixture_id', 'market', 'line', 'direction', 'probability', 'odds',
-                    ])->all());
-                }
-            });
-
-            foreach ($legs as $leg) {
-                $usedFixtureMarkets[$leg['fixture_id'].'|'.$leg['market']] = true;
-            }
             $summary['built'][] = (int) $target;
-            $summary['legs'] += count($legs);
+            $summary['legs'] += $built;
         }
+
+        $summary = $this->buildBankerSet($pool, $generatedAt, $summary);
 
         Log::info('Accumulator generation finished', $summary);
 
         return $summary;
+    }
+
+    /**
+     * The banker set: one ticket per (cap, target) pair. Each cap trims the
+     * pool to legs no longer than that price before the usual greedy fill
+     * runs, and a leg ceiling stops a ticket growing past what anyone would
+     * actually place.
+     *
+     * Caps are worked tightest-first and share one ledger, so the 1.25 row
+     * gets first call on the safest picks and the looser rows are built from
+     * what is left. That is deliberate: it stops the three rows collapsing
+     * into near-identical tickets.
+     *
+     * @param  Collection<int, array<string, mixed>>  $pool
+     * @param  array<string, mixed>  $summary
+     * @return array<string, mixed>
+     */
+    private function buildBankerSet(Collection $pool, Carbon $generatedAt, array $summary): array
+    {
+        $config = config('africode.accas.banker');
+        $maxLegs = (int) $config['max_legs'];
+        $used = [];
+
+        foreach ($config['caps'] as $cap) {
+            $cap = (float) $cap;
+            $capPool = $pool->filter(fn (array $leg) => $leg['odds'] <= $cap)->values();
+
+            foreach ($config['targets'] as $target) {
+                $label = number_format($cap, 2).'/'.$target.'x';
+
+                $built = $this->buildAndStore(
+                    target: (int) $target,
+                    pool: $capPool,
+                    usedFixtureMarkets: $used,
+                    generatedAt: $generatedAt,
+                    family: Accumulator::FAMILY_BANKER,
+                    maxLegOdds: $cap,
+                    maxLegs: $maxLegs,
+                );
+
+                if ($built === null) {
+                    $summary['banker']['skipped'][] = $label;
+
+                    continue;
+                }
+
+                $summary['banker']['built'][] = $label;
+                $summary['legs'] += $built;
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Builds one ticket and persists it, marking its picks as spent in the
+     * caller's ledger.
+     *
+     * @param  Collection<int, array<string, mixed>>  $pool
+     * @param  array<string, true>  $usedFixtureMarkets
+     * @return int|null leg count, or null when the tier is unreachable
+     */
+    private function buildAndStore(
+        int $target,
+        Collection $pool,
+        array &$usedFixtureMarkets,
+        Carbon $generatedAt,
+        string $family,
+        ?float $maxLegOdds,
+        ?int $maxLegs,
+    ): ?int {
+        $legs = $this->buildTier($target, $pool, $usedFixtureMarkets, $maxLegs);
+
+        if ($legs === null) {
+            return null;
+        }
+
+        DB::transaction(function () use ($legs, $target, $generatedAt, $family, $maxLegOdds) {
+            $combinedOdds = array_product(array_column($legs, 'odds'));
+
+            $accumulator = Accumulator::create([
+                'generated_at' => $generatedAt,
+                'family' => $family,
+                'max_leg_odds' => $maxLegOdds,
+                'target_odds' => $target,
+                'combined_odds' => round($combinedOdds, 2),
+                'combined_probability' => round(1 / $combinedOdds, 8),
+                'legs_count' => count($legs),
+            ]);
+
+            foreach ($legs as $leg) {
+                AccumulatorLeg::create(['accumulator_id' => $accumulator->id] + collect($leg)->only([
+                    'prediction_market_id', 'fixture_id', 'market', 'line', 'direction', 'probability', 'odds',
+                ])->all());
+            }
+        });
+
+        foreach ($legs as $leg) {
+            $usedFixtureMarkets[$leg['fixture_id'].'|'.$leg['market']] = true;
+        }
+
+        return count($legs);
     }
 
     /**
@@ -144,9 +248,10 @@ class AccumulatorBuilderService
     /**
      * @param  Collection<int, array<string, mixed>>  $pool
      * @param  array<string, true>  $usedFixtureMarkets
+     * @param  int|null  $maxLegs  ceiling on leg count, null for unlimited
      * @return list<array<string, mixed>>|null null when the tier is unreachable
      */
-    private function buildTier(int $target, Collection $pool, array $usedFixtureMarkets): ?array
+    private function buildTier(int $target, Collection $pool, array $usedFixtureMarkets, ?int $maxLegs = null): ?array
     {
         $available = $pool->filter(
             fn (array $leg) => ! isset($usedFixtureMarkets[$leg['fixture_id'].'|'.$leg['market']]),
@@ -166,7 +271,7 @@ class AccumulatorBuilderService
             $fixturesInAcca[$leg['fixture_id']] = true;
             $product *= $leg['odds'];
 
-            if ($product >= $target) {
+            if ($product >= $target || ($maxLegs !== null && count($legs) >= $maxLegs)) {
                 break;
             }
         }
