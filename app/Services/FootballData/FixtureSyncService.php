@@ -28,6 +28,9 @@ class FixtureSyncService
 
     public const DAYS_AHEAD = 14;
 
+    /** How far a calendar row may sit from the API kickoff and still be the same match. */
+    private const CALENDAR_MATCH_WINDOW_DAYS = 5;
+
     /**
      * Tokens carrying no identity: legal-form/club suffixes and connectives
      * that football-data.org includes but our seeded names may not.
@@ -109,6 +112,9 @@ class FixtureSyncService
             'home_team_id' => $home->id,
             'away_team_id' => $away->id,
             'kickoff_utc' => Carbon::parse($match['utcDate'])->utc(),
+            // The API publishes real kickoff times, so claiming a calendar
+            // row also clears any "time TBC" the calendar had to admit.
+            'kickoff_confirmed' => true,
             'status' => $status,
             'is_derby' => Rivalry::isDerbyPair($home->id, $away->id),
         ];
@@ -125,10 +131,39 @@ class FixtureSyncService
             $attributes['referee_id'] = Referee::firstOrCreate(['name' => $refereeName])->id;
         }
 
-        return Fixture::updateOrCreate(
-            ['footballdata_match_id' => $match['id']],
-            $attributes,
-        );
+        $fixture = Fixture::firstWhere('footballdata_match_id', $match['id'])
+            ?? $this->unclaimedFixture($league, $home, $away, $attributes['kickoff_utc'])
+            ?? new Fixture;
+
+        $fixture->footballdata_match_id = $match['id'];
+
+        return tap($fixture->fill($attributes))->save();
+    }
+
+    /**
+     * A row for this match that the API has not claimed yet — created from
+     * the published season calendar, which runs earlier and reaches further
+     * ahead than the API window. Claiming it keeps one row per match instead
+     * of the API inserting a duplicate alongside it.
+     */
+    private function unclaimedFixture(League $league, Team $home, Team $away, Carbon $kickoff): ?Fixture
+    {
+        return Fixture::query()
+            ->whereNull('footballdata_match_id')
+            ->where('league_id', $league->id)
+            ->where('home_team_id', $home->id)
+            ->where('away_team_id', $away->id)
+            // Wide enough for a televised match moved across a weekend,
+            // narrow enough not to swallow the reverse fixture.
+            ->whereBetween('kickoff_utc', [
+                $kickoff->copy()->subDays(self::CALENDAR_MATCH_WINDOW_DAYS),
+                $kickoff->copy()->addDays(self::CALENDAR_MATCH_WINDOW_DAYS),
+            ])
+            ->get()
+            // Nearest kickoff wins; sorted here rather than in SQL because
+            // the date arithmetic differs between MySQL and SQLite.
+            ->sortBy(fn (Fixture $fixture) => abs($fixture->kickoff_utc->diffInSeconds($kickoff)))
+            ->first();
     }
 
     private function mapStatus(string $apiStatus): string

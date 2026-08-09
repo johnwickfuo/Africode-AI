@@ -83,25 +83,55 @@ class FixtureCalendarImportTest extends TestCase
         $this->assertSame('2027-04-17', $fixtures->last()->kickoff_utc->toDateString());
     }
 
-    public function test_api_covered_leagues_are_left_to_the_api(): void
+    public function test_every_tracked_league_has_a_calendar(): void
     {
         $this->fakeCalendars([]);
 
         app(FixtureCalendarImportService::class)->run();
 
-        // Only the four leagues off the free API tier opt in; the rest keep
-        // football-data.org as the single owner of their schedule.
-        $this->assertEqualsCanonicalizing(
-            ['EL1', 'EL2', 'SPL', 'TSL'],
-            League::whereNotNull('calendar_slug')->pluck('code')->all(),
-        );
+        // The API is only asked for a 14-day window, so a league whose
+        // season opens later than that needs the calendar too.
+        $this->assertSame(0, League::whereNull('calendar_slug')->count());
 
-        Http::assertSentCount(4);
-        foreach (['efl-league-one', 'efl-league-two', 'scottish-premiership', 'super-lig'] as $slug) {
+        $leagues = League::count();
+        Http::assertSentCount($leagues);
+        foreach (['epl', 'la-liga', 'super-lig', 'efl-league-one'] as $slug) {
             Http::assertSent(fn ($request) => $request->url()
                 === "https://fixturedownload.com/download/{$slug}-2026-UTC.csv");
         }
         $this->assertSame(0, Fixture::count());
+    }
+
+    public function test_a_fixture_the_api_owns_is_never_rewritten_by_the_calendar(): void
+    {
+        $league = League::where('code', 'PL')->firstOrFail();
+        $arsenal = Team::where('name', 'Arsenal')->firstOrFail();
+        $chelsea = Team::where('name', 'Chelsea')->firstOrFail();
+
+        // football-data.org already synced this one, with a live kickoff
+        // change the published calendar does not know about.
+        $synced = Fixture::create([
+            'league_id' => $league->id,
+            'season' => '2026-2027',
+            'matchday' => 9,
+            'home_team_id' => $arsenal->id,
+            'away_team_id' => $chelsea->id,
+            'kickoff_utc' => '2026-10-04 16:30:00',
+            'status' => Fixture::STATUS_SCHEDULED,
+            'footballdata_match_id' => 987654,
+        ]);
+
+        $this->fakeCalendars(['epl' => [
+            '80,9,04/10/2026 14:00,Emirates Stadium,Arsenal,Chelsea,3 - 1',
+        ]]);
+
+        $summary = app(FixtureCalendarImportService::class)->run();
+
+        $synced->refresh();
+        $this->assertSame('2026-10-04 16:30', $synced->kickoff_utc->format('Y-m-d H:i'));
+        $this->assertNull($synced->home_goals, 'the API owns results for its own matches');
+        $this->assertSame(0, $summary['fixtures_created'], 'no duplicate row alongside it');
+        $this->assertSame(1, Fixture::count());
     }
 
     public function test_a_fixture_the_odds_import_already_created_is_updated_not_duplicated(): void
@@ -220,6 +250,38 @@ class FixtureCalendarImportTest extends TestCase
         $this->assertStringEndsWith(', 15:00', $scottish->kickoffLabel());
     }
 
+    public function test_calendar_spellings_resolve_to_the_club_we_already_track(): void
+    {
+        // The calendar abbreviates ("Man Utd"), localises ("FC Bayern
+        // München") and over-qualifies ("RCD Espanyol de Barcelona"). Each
+        // must land on the existing club, not mint a second one that would
+        // split its history.
+        $before = Team::count();
+
+        $this->fakeCalendars([
+            'epl' => [
+                '1,1,15/08/2026 14:00,Etihad,Man City,Man Utd,',
+                '2,1,15/08/2026 16:30,Emirates,Spurs,Nott\'m Forest,',
+            ],
+            'bundesliga' => ['1,1,15/08/2026 18:30,Allianz,FC Bayern München,Borussia Dortmund,'],
+            'la-liga' => ['1,1,15/08/2026 20:00,Cornella,RCD Espanyol de Barcelona,FC Barcelona,'],
+            'serie-a' => ['1,1,15/08/2026 18:45,Meazza,Internazionale,Juventus,'],
+        ]);
+
+        $summary = app(FixtureCalendarImportService::class)->run();
+
+        $this->assertSame(0, $summary['teams_created']);
+        $this->assertSame($before, Team::count());
+
+        $derby = Fixture::whereHas('league', fn ($q) => $q->where('code', 'PL'))
+            ->orderBy('kickoff_utc')->with('homeTeam', 'awayTeam')->first();
+        $this->assertSame('Manchester City', $derby->homeTeam->name);
+        $this->assertSame('Manchester United', $derby->awayTeam->name);
+
+        $milan = Fixture::whereHas('league', fn ($q) => $q->where('code', 'SA'))->with('homeTeam')->first();
+        $this->assertSame('Inter Milan', $milan->homeTeam->name);
+    }
+
     public function test_a_promoted_club_missing_from_the_seed_is_created(): void
     {
         $this->fakeCalendars(['super-lig' => [
@@ -242,8 +304,9 @@ class FixtureCalendarImportTest extends TestCase
 
         $summary = app(FixtureCalendarImportService::class)->run();
 
-        $this->assertSame(4, $summary['leagues']);
-        $this->assertSame(4, $summary['calendars_missing']);
+        $leagues = League::count();
+        $this->assertSame($leagues, $summary['leagues']);
+        $this->assertSame($leagues, $summary['calendars_missing']);
         $this->assertSame(0, $summary['fixtures_created']);
     }
 

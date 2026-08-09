@@ -92,13 +92,15 @@ Laravel's `public/` folder is ever web-served; the repo root (with `.env`,
 | Championship, Eredivisie, Primeira Liga | football-data.org (14 days) | football-data.co.uk | no xG |
 | League One, League Two, Scottish Premiership, Süper Lig | fixturedownload.com (full season) | football-data.co.uk | no xG; not on the free API tier |
 
-The free football-data.org tier carries 13 competitions, so four of the
-tracked divisions have no API fixtures. They used to depend on
-football-data.co.uk's `fixtures.csv`, which is a **~3-day rolling
-window** — a league whose season had not started yet showed nothing at
-all. They now take their schedule from fixturedownload.com, a free
-keyless CSV of the complete published season, so every league carries the
-same horizon. `fixtures.csv` still prices them.
+**Every** league also carries a fixturedownload.com `calendar_slug`, not
+just the four the API omits. The API is only queried for a 14-day window,
+so a league whose season opens later than that returns nothing and would
+vanish from the site — in August 2026 that was the Premier League, Ligue
+1, Serie A and the Bundesliga, all of which had published their fixture
+lists months earlier. The calendar fills the gap; the API still owns
+every match it knows about (kickoff changes, matchdays, referees,
+results), and the sync claims the calendar's row rather than inserting a
+duplicate beside it.
 
 Referees are published for the English and Scottish divisions only;
 elsewhere the cards model falls back to the league-average referee and

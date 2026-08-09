@@ -43,9 +43,33 @@ class FixtureCalendarImportService
      */
     private const REUSE_WINDOW_DAYS = 21;
 
+    /**
+     * Tokens carrying no identity: legal-form and club-type words, plus the
+     * articles that some sources keep and others drop ("Le Havre").
+     */
     private const STOP_TOKENS = [
-        'fc', 'afc', 'cf', 'ac', 'as', 'ss', 'us', 'rc', 'sc', 'sv', 'st',
-        'club', 'de', 'real', 'deportivo', 'stade', 'olympique',
+        'fc', 'afc', 'cf', 'cfc', 'acf', 'ac', 'as', 'aj', 'ss', 'ssc', 'us',
+        'rc', 'rcd', 'ca', 'cd', 'ud', 'sc', 'sco', 'sv', 'fsv', 'vfl', 'vfb',
+        'tsg', 'bc', 'ogc', 'losc', 'osc', 'st', 'club', 'calcio', 'balompie',
+        'de', 'real', 'deportivo', 'stade', 'olympique', 'le', 'la', 'les',
+    ];
+
+    /**
+     * fixturedownload spellings that no token rule can bridge to our seeded
+     * name — abbreviations, nicknames, and one case ("RCD Espanyol de
+     * Barcelona") where the generic subset rule finds two candidates.
+     * Anything not listed here and not matched falls through to being
+     * created, which is correct for a genuinely promoted club.
+     */
+    private const NAME_ALIASES = [
+        'Man City' => 'Manchester City',
+        'Man Utd' => 'Manchester United',
+        'Spurs' => 'Tottenham Hotspur',
+        "Nott'm Forest" => 'Nottingham Forest',
+        'FC Bayern München' => 'Bayern Munich',
+        'Internazionale' => 'Inter Milan',
+        'RCD Espanyol de Barcelona' => 'Espanyol',
+        'Havre Athletic Club' => 'Le Havre',
     ];
 
     /** @var array<string, Collection<int, Team>> keyed by country */
@@ -159,11 +183,15 @@ class FixtureCalendarImportService
             // A postponed or finished fixture keeps its status: the calendar
             // is a schedule, not a results feed, and the stats import owns
             // what actually happened.
-            // The published calendar is the schedule of record for these
-            // leagues — nothing else covers them — so it owns the kickoff of
-            // any match still to be played, and says whether it knows the
-            // time or only the date.
-            if ($fixture->status === Fixture::STATUS_SCHEDULED) {
+            // football-data.org is the better source where it has the match
+            // at all — live kickoff changes, matchdays, referees — so a row
+            // it already claimed is left exactly as it is. The calendar's
+            // job there is only to fill the gap beyond the API's 14-day
+            // window. Everywhere else it is the schedule of record, and it
+            // says whether it knows the time or only the date.
+            $apiOwned = $fixture->footballdata_match_id !== null;
+
+            if (! $apiOwned && $fixture->status === Fixture::STATUS_SCHEDULED) {
                 $fixture->kickoff_utc = $kickoff;
                 $fixture->kickoff_confirmed = $timesConfirmed;
             }
@@ -241,7 +269,9 @@ class FixtureCalendarImportService
     /** "2 - 1" once played, blank before. Never overwrites a stored score. */
     private function fillResult(Fixture $fixture, string $result): bool
     {
-        if ($fixture->home_goals !== null || $fixture->status !== Fixture::STATUS_SCHEDULED) {
+        if ($fixture->footballdata_match_id !== null
+            || $fixture->home_goals !== null
+            || $fixture->status !== Fixture::STATUS_SCHEDULED) {
             return false;
         }
 
@@ -329,6 +359,11 @@ class FixtureCalendarImportService
         $teams = $this->teamsByCountry[$league->country] ??= Team::query()
             ->whereHas('league', fn ($query) => $query->where('country', $league->country))
             ->get();
+
+        $alias = self::NAME_ALIASES[$name] ?? null;
+        if ($alias !== null && ($team = $teams->firstWhere('name', $alias))) {
+            return $team;
+        }
 
         $needle = $this->tokens($name);
 

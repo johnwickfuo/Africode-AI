@@ -157,8 +157,8 @@ class OddsAndValueTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Dashboard', false)
-                ->where('fixtures.0.value.market', 'result')
-                ->where('fixtures.0.value.pick', 'home'));
+                ->where('groups.0.fixtures.0.value.market', 'result')
+                ->where('groups.0.fixtures.0.value.pick', 'home'));
 
         $this->get("/match/{$fixture->id}")
             ->assertInertia(fn ($page) => $page

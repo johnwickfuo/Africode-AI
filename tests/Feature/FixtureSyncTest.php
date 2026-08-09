@@ -131,6 +131,42 @@ class FixtureSyncTest extends TestCase
         $this->assertSame('Anthony Taylor', $fixture->referee->name);
     }
 
+    public function test_sync_claims_the_calendar_row_instead_of_duplicating_the_match(): void
+    {
+        // The published-calendar import runs first and reaches further ahead
+        // than the API window, so by the time the API reports a match a row
+        // for it usually already exists — with no match id, a rounded
+        // kickoff, and no referee.
+        $arsenal = Team::where('name', 'Arsenal')->firstOrFail();
+        $spurs = Team::where('name', 'Tottenham Hotspur')->firstOrFail();
+
+        $fromCalendar = Fixture::create([
+            'league_id' => $arsenal->league_id,
+            'season' => '2025-2026',
+            'matchday' => 21,
+            'home_team_id' => $arsenal->id,
+            'away_team_id' => $spurs->id,
+            'kickoff_utc' => now('UTC')->addDays(3)->setTime(12, 0),
+            'kickoff_confirmed' => false,
+            'status' => Fixture::STATUS_SCHEDULED,
+        ]);
+
+        $this->fakeApi(['PL' => [$this->match([
+            'referees' => [['id' => 11585, 'name' => 'Anthony Taylor', 'type' => 'REFEREE', 'nationality' => 'England']],
+        ])]]);
+
+        SyncFixturesJob::dispatchSync();
+
+        $this->assertSame(1, Fixture::count(), 'the API must adopt the row, not add a second one');
+
+        $fromCalendar->refresh();
+        $this->assertSame(500001, $fromCalendar->footballdata_match_id);
+        // The API's kickoff wins, and with it the time is no longer a guess.
+        $this->assertSame('14:00', $fromCalendar->kickoff_utc->format('H:i'));
+        $this->assertTrue($fromCalendar->kickoff_confirmed);
+        $this->assertSame('Anthony Taylor', $fromCalendar->referee->name);
+    }
+
     public function test_awkward_api_names_resolve_to_seeded_teams(): void
     {
         $this->fakeApi([

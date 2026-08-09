@@ -18,8 +18,9 @@ class ExampleTest extends TestCase
             ->assertStatus(200)
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Dashboard', false)
-                ->count('leagues', 12)
-                ->has('fixtures')
+                // No fixtures seeded, so every league is filtered out.
+                ->count('groups', 0)
+                ->where('window_days', 14)
             );
     }
 }

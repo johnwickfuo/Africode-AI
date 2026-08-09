@@ -84,11 +84,49 @@ class PagesTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Dashboard', false)
-                ->count('fixtures', 1)
-                ->where('fixtures.0.id', $fixture->id)
-                ->where('fixtures.0.is_derby', true)
-                ->where('fixtures.0.best_bet.headline', 'Over 9.5 corners — 78%')
-                ->where('fixtures.0.best_bet.probability', 0.78)
+                ->count('groups', 1)
+                ->where('groups.0.league.code', $fixture->league->code)
+                ->where('groups.0.preview', false)
+                ->count('groups.0.fixtures', 1)
+                ->where('groups.0.fixtures.0.id', $fixture->id)
+                ->where('groups.0.fixtures.0.is_derby', true)
+                ->where('groups.0.fixtures.0.best_bet.headline', 'Over 9.5 corners — 78%')
+                ->where('groups.0.fixtures.0.best_bet.probability', 0.78)
+            );
+    }
+
+    public function test_dashboard_groups_by_league_and_previews_seasons_starting_later(): void
+    {
+        // In play: a Premier League match inside the 14-day window.
+        [$inWindow] = $this->upcomingFixtureWithPrediction();
+
+        // Not yet: the Bundesliga opens well beyond the window, which used
+        // to make the league vanish from the site entirely.
+        $bayern = $this->team('Bayern Munich');
+        $leipzig = $this->team('RB Leipzig');
+        $opener = Fixture::create([
+            'league_id' => $bayern->league_id,
+            'season' => '2026-2027',
+            'matchday' => 1,
+            'home_team_id' => $bayern->id,
+            'away_team_id' => $leipzig->id,
+            'kickoff_utc' => now('UTC')->addDays(25),
+            'status' => Fixture::STATUS_SCHEDULED,
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard', false)
+                ->count('groups', 2)
+                // Leagues actually playing lead, previews fall to the bottom.
+                ->where('groups.0.league.code', $inWindow->league->code)
+                ->where('groups.0.preview', false)
+                ->where('groups.0.starts_in_days', null)
+                ->where('groups.1.league.code', 'BL1')
+                ->where('groups.1.preview', true)
+                ->where('groups.1.starts_in_days', 25)
+                ->where('groups.1.fixtures.0.id', $opener->id)
             );
     }
 
