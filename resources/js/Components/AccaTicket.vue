@@ -41,6 +41,9 @@ const pct = (probability) => {
                     <p class="text-xs text-ink-500">
                         {{ legs.length }} legs · {{ pct(ticket.combined_probability) }} win chance
                     </p>
+                    <p v-if="ticket.window" class="mt-0.5 text-xs font-semibold text-ink-400">
+                        {{ ticket.window }}
+                    </p>
                 </div>
                 <OutcomeBadge
                     v-if="ticket.outcome !== 'pending'"

@@ -276,6 +276,15 @@ call while no two tickets inside one family ever do.
 | Classic | 3x, 10x, 20x, 50x, 100x, 1000x, 10000x | any leg price; a few long calls carry the total |
 | Banker | 20x, 40x, 80x, 160x at each of three caps | no leg longer than 1.25, 1.40 or 1.60 |
 
+Every ticket's legs fall inside **two consecutive calendar days** (display
+timezone, `accas.window_days`), so a ticket settles as one weekend
+instead of dribbling out over a fortnight. Each ticket takes the earliest
+window it can complete in, which is why a 3x can sit on tonight's games
+while a 160x waits for Saturday. Confined to two days the pool is thin,
+so the no-reuse rule is a preference rather than a veto: a tier that
+cannot be built from unspent picks is rebuilt allowing reuse rather than
+dropped.
+
 A banker cap is a ceiling on what one leg may pay, so 1.25 means every leg
 is an 80%+ call. That forces long tickets — 20x out of 1.25 legs needs at
 least 14 of them, one per fixture — so the tighter rows only fill on a

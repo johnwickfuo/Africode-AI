@@ -22,13 +22,20 @@ use Illuminate\Support\Facades\Log;
  *    tickets — 20x from 1.25 legs takes at least 14 of them — so leg counts
  *    are capped and unreachable tiers are simply not offered.
  *
+ * Every ticket is confined to a short run of consecutive days (two by
+ * default): a ticket whose legs span a fortnight cannot be settled, topped
+ * up or enjoyed. Each ticket takes the EARLIEST window it can complete in,
+ * so small tickets land on the next match day and the long ones drift to
+ * whichever weekend is busy enough to carry them.
+ *
  * Separation rules (within a generation run):
- *  - The conflict unit is (fixture, market): once an acca carries a pick
- *    from a fixture's market, no other acca IN THE SAME FAMILY may use ANY
- *    pick from that same fixture+market — same line, the opposite
- *    direction, or a nearby line are all the same call. Other markets of
- *    that fixture stay available. The two families keep separate ledgers,
- *    so a banker ticket and a classic ticket may land on the same call.
+ *  - The conflict unit is (fixture, market): a pick already spent on another
+ *    ticket in the same family is avoided — same line, the opposite
+ *    direction, or a nearby line are all the same call. Confined to two
+ *    days the pool is often too thin for that to hold, so it is a
+ *    preference, not a veto: a tier that cannot be built from unspent picks
+ *    alone is rebuilt allowing reuse rather than dropped. The two families
+ *    keep separate ledgers.
  *  - Within a single acca, at most one leg per fixture (same-match legs are
  *    correlated, which would overstate the combined odds).
  *
@@ -154,7 +161,7 @@ class AccumulatorBuilderService
         ?float $maxLegOdds,
         ?int $maxLegs,
     ): ?int {
-        $legs = $this->buildTier($target, $pool, $usedFixtureMarkets, $maxLegs);
+        $legs = $this->buildInEarliestWindow($target, $pool, $usedFixtureMarkets, $maxLegs);
 
         if ($legs === null) {
             return null;
@@ -188,6 +195,43 @@ class AccumulatorBuilderService
     }
 
     /**
+     * Walks the candidate windows oldest-first and returns the first
+     * complete ticket. Inside a window, unspent picks are tried first so
+     * tickets stay distinct where the card is deep enough; a window that
+     * only works by reusing another ticket's call still beats skipping the
+     * tier, which is the trade a two-day rule forces.
+     *
+     * @param  Collection<int, array<string, mixed>>  $pool
+     * @param  array<string, true>  $usedFixtureMarkets
+     * @return list<array<string, mixed>>|null
+     */
+    private function buildInEarliestWindow(
+        int $target,
+        Collection $pool,
+        array $usedFixtureMarkets,
+        ?int $maxLegs,
+    ): ?array {
+        $span = (int) config('africode.accas.window_days', 2);
+
+        foreach ($pool->pluck('date')->unique()->sort()->values() as $start) {
+            $dates = collect(range(0, $span - 1))
+                ->map(fn (int $offset) => Carbon::parse($start)->addDays($offset)->toDateString())
+                ->all();
+
+            $window = $pool->filter(fn (array $leg) => in_array($leg['date'], $dates, true))->values();
+
+            $legs = $this->buildTier($target, $window, $usedFixtureMarkets, $maxLegs)
+                ?? $this->buildTier($target, $window, [], $maxLegs);
+
+            if ($legs !== null) {
+                return $legs;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Eligible legs: every market row of each upcoming fixture's latest
      * prediction, inside the configured probability band.
      *
@@ -201,6 +245,9 @@ class AccumulatorBuilderService
         // from the same bettable-market list the Best Bet uses.
         $bettable = config('africode.markets.bettable');
         $minLine = config('africode.markets.min_headline_line');
+        // Windows are calendar days in the timezone the site renders, so a
+        // ticket reads as "Saturday and Sunday" to the person placing it.
+        $displayTz = config('africode.display_timezone');
 
         $fixtures = Fixture::upcoming()
             ->where('kickoff_utc', '<=', now('UTC')->addDays((int) config('africode.predict.days_ahead')))
@@ -211,7 +258,7 @@ class AccumulatorBuilderService
             ->get();
 
         return $fixtures
-            ->flatMap(function (Fixture $fixture) use ($minProb, $maxProb, $bettable, $minLine) {
+            ->flatMap(function (Fixture $fixture) use ($minProb, $maxProb, $bettable, $minLine, $displayTz) {
                 /** @var Prediction|null $prediction */
                 $prediction = $fixture->predictions->first();
                 if ($prediction === null) {
@@ -228,6 +275,7 @@ class AccumulatorBuilderService
                     ->map(fn ($market) => [
                         'prediction_market_id' => $market->id,
                         'fixture_id' => $fixture->id,
+                        'date' => $fixture->kickoff_utc->timezone($displayTz)->toDateString(),
                         'market' => $market->market,
                         'line' => $market->line !== null ? (float) $market->line : null,
                         'direction' => $market->direction,
@@ -287,11 +335,14 @@ class AccumulatorBuilderService
         $productWithoutLast = $product / $last['odds'];
         $neededOdds = $target / $productWithoutLast;
 
+        // Picks already on this ticket, as a lookup rather than a rescan of
+        // the leg list for every candidate.
+        $taken = array_flip(array_column($legs, 'prediction_market_id'));
+
         $replacement = $available
             ->filter(fn (array $leg) => ! isset($fixturesInAcca[$leg['fixture_id']])
                 && $leg['odds'] >= $neededOdds
-                // Not already used as an earlier leg of this acca.
-                && ! collect($legs)->contains('prediction_market_id', $leg['prediction_market_id']))
+                && ! isset($taken[$leg['prediction_market_id']]))
             ->sortBy([['probability', 'desc'], ['fixture_id', 'asc'], ['market', 'asc'], ['line', 'asc']])
             ->first();
 

@@ -38,7 +38,7 @@ const capLabel = (row) => (row.max_leg_odds ? `${row.max_leg_odds.toFixed(2)} ·
         <PageHeader
             eyebrow="Built fresh each morning"
             title="Accumulators"
-            subtitle="Model picks combined into tickets by target odds. Within a family no two tickets share a call on the same market, so one result can never sink the whole set."
+            subtitle="Model picks combined into tickets by target odds. Every ticket runs over at most two consecutive days, so it settles as one weekend rather than dribbling out over a fortnight."
         >
             <template #actions>
                 <span v-if="generated_at" class="text-xs text-ink-500">

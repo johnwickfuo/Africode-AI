@@ -13,6 +13,7 @@ use App\Models\Team;
 use App\Services\Accas\AccumulatorBuilderService;
 use App\Services\Predictions\SettlePredictionsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
@@ -86,21 +87,25 @@ class AccumulatorsTest extends TestCase
      * @param  array<string, float>  $markets
      * @return list<Fixture>
      */
-    private function manyPredictedFixtures(int $count, array $markets): array
-    {
+    private function manyPredictedFixtures(
+        int $count,
+        array $markets,
+        int $daysAhead = 2,
+        int $teamOffset = 0,
+    ): array {
         $teams = Team::orderBy('id')->get();
         $fixtures = [];
 
         foreach (range(0, $count - 1) as $offset) {
-            $home = $teams[$offset * 2];
-            $away = $teams[$offset * 2 + 1];
+            $home = $teams[($teamOffset + $offset) * 2];
+            $away = $teams[($teamOffset + $offset) * 2 + 1];
 
             $fixture = Fixture::create([
                 'league_id' => $home->league_id,
                 'season' => '2025-2026',
                 'home_team_id' => $home->id,
                 'away_team_id' => $away->id,
-                'kickoff_utc' => now('UTC')->addDays(2)->addMinutes($offset),
+                'kickoff_utc' => now('UTC')->addDays($daysAhead)->setTime(12, 0)->addMinutes($offset),
                 'status' => Fixture::STATUS_SCHEDULED,
             ]);
 
@@ -320,7 +325,7 @@ class AccumulatorsTest extends TestCase
         $this->assertSame(0, Accumulator::count());
     }
 
-    public function test_families_keep_separate_ledgers_but_stay_distinct_inside_themselves(): void
+    public function test_a_tier_reuses_spent_picks_rather_than_going_unavailable(): void
     {
         config([
             'africode.accas.tiers' => [3],
@@ -329,26 +334,91 @@ class AccumulatorsTest extends TestCase
             'africode.accas.banker.max_legs' => 25,
         ]);
 
+        // 25 fixtures with one pick each: the 20x ticket takes ~14 of them,
+        // leaving too few unspent for 40x. Confined to a two-day window that
+        // is normal, so the tier is rebuilt from the full pool instead of
+        // being dropped.
         $this->manyPredictedFixtures(25, ['goals|2.5|over' => 0.85]);
 
-        app(AccumulatorBuilderService::class)->run();
+        $summary = app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame(['1.25/20x', '1.25/40x'], $summary['banker']['built']);
 
         $classic = Accumulator::where('family', Accumulator::FAMILY_CLASSIC)->with('legs')->firstOrFail();
-        $banker = Accumulator::where('family', Accumulator::FAMILY_BANKER)->with('legs')->firstOrFail();
+        $banker = Accumulator::where('family', Accumulator::FAMILY_BANKER)
+            ->where('target_odds', 20)->with('legs')->firstOrFail();
 
-        // Separate ledgers: the two families are allowed to land on the same
-        // call, because nobody backs a classic and a banker ticket as a pair.
+        // Families never competed for picks in the first place.
         $shared = $classic->legs->pluck('prediction_market_id')
             ->intersect($banker->legs->pluck('prediction_market_id'));
         $this->assertNotEmpty($shared, 'families should be free to reuse each other picks');
 
-        // Inside the banker family the old rule still holds, which is also
-        // why the 40x rung has nothing left to build from here.
-        $bankerCalls = AccumulatorLeg::whereIn(
-            'accumulator_id',
-            Accumulator::where('family', Accumulator::FAMILY_BANKER)->pluck('id'),
-        )->get()->map(fn ($leg) => $leg->fixture_id.'|'.$leg->market);
-        $this->assertSame($bankerCalls->count(), $bankerCalls->unique()->count());
+        // Reuse is across tickets only — one leg per fixture still holds
+        // inside any single ticket, since same-match legs are correlated.
+        foreach (Accumulator::with('legs')->get() as $acca) {
+            $this->assertSame(
+                $acca->legs->count(),
+                $acca->legs->pluck('fixture_id')->unique()->count(),
+            );
+        }
+    }
+
+    public function test_every_leg_falls_inside_a_two_day_window(): void
+    {
+        config([
+            'africode.accas.tiers' => [3],
+            'africode.accas.banker.caps' => [],
+        ]);
+
+        // A thin card today and tomorrow, a fat one a week out. Spread over
+        // four dates, an unconstrained builder would mix them freely.
+        $this->manyPredictedFixtures(2, ['goals|2.5|over' => 0.60], daysAhead: 1);
+        $this->manyPredictedFixtures(2, ['goals|2.5|over' => 0.60], daysAhead: 2, teamOffset: 2);
+        $this->manyPredictedFixtures(6, ['goals|2.5|over' => 0.60], daysAhead: 5, teamOffset: 4);
+
+        app(AccumulatorBuilderService::class)->run();
+
+        $acca = Accumulator::with('legs.fixture')->firstOrFail();
+        $dates = $acca->legs
+            ->map(fn ($leg) => $leg->fixture->kickoff_utc
+                ->timezone(config('africode.display_timezone'))->toDateString())
+            ->unique()->sort()->values();
+
+        $this->assertLessThanOrEqual(2, $dates->count(), 'a ticket may span at most two dates');
+        if ($dates->count() === 2) {
+            $this->assertSame(
+                1,
+                (int) Carbon::parse($dates[0])->diffInDays(Carbon::parse($dates[1])),
+                'and they must be consecutive',
+            );
+        }
+    }
+
+    public function test_a_ticket_takes_the_earliest_window_it_can_complete_in(): void
+    {
+        config([
+            'africode.accas.tiers' => [3, 20],
+            'africode.accas.banker.caps' => [],
+        ]);
+
+        $tz = config('africode.display_timezone');
+        $soon = now('UTC')->addDays(2)->setTime(12, 0)->timezone($tz)->toDateString();
+        $later = now('UTC')->addDays(5)->setTime(12, 0)->timezone($tz)->toDateString();
+
+        // Three 1.67 legs on the near date reach 3x but not 20x; the fat
+        // card three days later can carry both.
+        $this->manyPredictedFixtures(3, ['goals|2.5|over' => 0.60], daysAhead: 2);
+        $this->manyPredictedFixtures(10, ['goals|2.5|over' => 0.60], daysAhead: 5, teamOffset: 3);
+
+        app(AccumulatorBuilderService::class)->run();
+
+        $dateOf = fn (int $target) => Accumulator::where('target_odds', $target)
+            ->with('legs.fixture')->firstOrFail()->legs
+            ->map(fn ($leg) => $leg->fixture->kickoff_utc->timezone($tz)->toDateString())
+            ->unique()->values()->all();
+
+        $this->assertSame([$soon], $dateOf(3), 'the small ticket stays on the nearest date');
+        $this->assertSame([$later], $dateOf(20), 'the big one waits for a card that can carry it');
     }
 
     public function test_settlement_resolves_accas_from_leg_outcomes(): void

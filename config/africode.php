@@ -128,6 +128,12 @@ return [
         'leg_min_prob' => 0.55,
         'leg_max_prob' => 0.92,
 
+        // Every ticket's legs must fall inside this many consecutive
+        // calendar days (display timezone), so a ticket settles as one
+        // weekend rather than dribbling out over a fortnight. Each ticket
+        // takes the earliest window it can complete in.
+        'window_days' => 2,
+
         // "Banker" tickets: a big total built only from short, high-
         // probability legs, so no single result carries the ticket. Each
         // cap is the most a single leg may pay — 1.25 means every leg is

@@ -90,6 +90,7 @@ class AccumulatorsController extends Controller
                 'target' => (int) $target,
                 'max_leg_odds' => $maxLegOdds,
                 'available' => $accumulator !== null,
+                'window' => $accumulator === null ? null : $this->window($accumulator),
                 'combined_odds' => $accumulator?->combined_odds,
                 'combined_probability' => $accumulator?->combined_probability,
                 'outcome' => $accumulator?->outcome,
@@ -130,6 +131,31 @@ class AccumulatorsController extends Controller
                 'won' => (int) $row->won,
                 'total' => (int) $row->total,
             ]);
+    }
+
+    /**
+     * The days a ticket runs over — "Sat 15 Aug" for a single day, "Sat 15 –
+     * Sun 16 Aug" when it spans two. Derived from the legs, so it can never
+     * disagree with them.
+     */
+    private function window(Accumulator $accumulator): string
+    {
+        $displayTz = config('africode.display_timezone');
+
+        $kickoffs = $accumulator->legs
+            ->map(fn (AccumulatorLeg $leg) => $leg->fixture->kickoff_utc->timezone($displayTz))
+            ->sort()->values();
+
+        $first = $kickoffs->first();
+        $last = $kickoffs->last();
+
+        if ($first === null) {
+            return '';
+        }
+
+        return $first->isSameDay($last)
+            ? $first->isoFormat('ddd D MMM')
+            : $first->isoFormat('ddd D').' – '.$last->isoFormat('ddd D MMM');
     }
 
     private function key(string $family, ?float $maxLegOdds, int $target): string
