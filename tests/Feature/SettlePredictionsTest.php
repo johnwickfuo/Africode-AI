@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Jobs\SettlePredictionsJob;
+use App\Models\Accumulator;
+use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
 use App\Models\MatchStat;
 use App\Models\ModelAccuracy;
@@ -165,6 +167,62 @@ class SettlePredictionsTest extends TestCase
         $this->assertSame(2, $summary['awaiting_stats']);
         $this->assertSame('won', PredictionMarket::where('market', 'goals')->first()->outcome);
         $this->assertSame('pending', PredictionMarket::where('market', 'corners')->first()->outcome);
+    }
+
+    public function test_stats_that_never_arrive_are_voided_once_the_grace_period_passes(): void
+    {
+        config(['africode.settle.grace_days' => 3]);
+
+        $fixture = $this->finishedFixtureWithStats(withStats: false);
+        $fixture->update(['kickoff_utc' => now('UTC')->subDays(5)]);
+
+        $this->predictionWithMarkets($fixture, [
+            ['goals', 2.5, 'over', 0.64],   // scoreable from the result
+            ['corners', 9.5, 'over', 0.78], // stats never landed
+        ]);
+
+        $summary = app(SettlePredictionsService::class)->run();
+
+        $this->assertSame(1, $summary['settled']);
+        $this->assertSame(0, $summary['awaiting_stats']);
+        $this->assertSame(1, $summary['voided_unscoreable']);
+        $this->assertSame('won', PredictionMarket::where('market', 'goals')->first()->outcome);
+        $this->assertSame('void', PredictionMarket::where('market', 'corners')->first()->outcome);
+    }
+
+    public function test_a_match_no_source_ever_scored_stops_hanging_its_ticket(): void
+    {
+        config(['africode.settle.grace_days' => 3]);
+
+        // Kicked off a week ago and still sitting on "scheduled" with no
+        // score: no feed covered it. Its picks can never be settled, so the
+        // ticket has to resolve on them being void rather than wait forever.
+        $fixture = $this->finishedFixtureWithStats(withStats: false);
+        $fixture->update([
+            'status' => Fixture::STATUS_SCHEDULED,
+            'home_goals' => null,
+            'away_goals' => null,
+            'kickoff_utc' => now('UTC')->subDays(7),
+        ]);
+
+        $prediction = $this->predictionWithMarkets($fixture, [['goals', 2.5, 'over', 0.64]]);
+        $market = $prediction->markets()->first();
+
+        $acca = Accumulator::create([
+            'generated_at' => now()->subDays(7), 'target_odds' => 3, 'combined_odds' => 3.1,
+            'combined_probability' => 0.32, 'legs_count' => 1,
+        ]);
+        AccumulatorLeg::create([
+            'accumulator_id' => $acca->id, 'prediction_market_id' => $market->id,
+            'fixture_id' => $fixture->id, 'market' => 'goals', 'line' => 2.5,
+            'direction' => 'over', 'probability' => 0.64, 'odds' => 1.56,
+        ]);
+
+        $summary = app(SettlePredictionsService::class)->run();
+
+        $this->assertSame(1, $summary['voided_unscoreable']);
+        $this->assertSame('void', $market->fresh()->outcome);
+        $this->assertSame('void', $acca->fresh()->outcome, 'the ticket must stop awaiting a result');
     }
 
     public function test_postponed_fixture_voids_its_markets(): void

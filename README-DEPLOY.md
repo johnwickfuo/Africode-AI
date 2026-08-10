@@ -276,6 +276,25 @@ call while no two tickets inside one family ever do.
 | Classic | 3x, 10x, 20x, 50x, 100x, 1000x, 10000x | any leg price; a few long calls carry the total |
 | Banker | 20x, 40x, 80x, 160x at each of three caps | no leg longer than 1.25, 1.40 or 1.60 |
 
+### Settlement, and why a pick may end up void
+
+A result alone settles goals, BTTS and 1X2. Corners, cards and shots on
+target need the match stats, which trail the result by a night — those
+picks stay pending until the stats land. Some never land: FBref is
+Cloudflare-blocked from most datacenter IPs, and a division
+football-data.co.uk has not published yet has no stats at all. Some
+matches never even get a score, when no feed covered them that week.
+
+Nothing is allowed to hang forever. Past `settle.grace_days`
+(`SETTLE_GRACE_DAYS`, default 3) after kickoff, a pick that still cannot
+be scored is **voided** — it drops out of any ticket carrying it, exactly
+as a bookmaker voids an unsettleable leg, and voids never count towards
+the accuracy record. A ticket whose every leg voided settles as void.
+
+If `voided_unscoreable` in the settlement log is consistently large, that
+is the stats import failing rather than normal lag — check
+`ImportCsvStatsJob` in `pipeline_runs`.
+
 A ticket lives on the accumulators page only while it can still be backed
 — that is, while at least one of its legs has yet to kick off. Once the
 last match starts it moves to the accuracy page, which keeps the twelve

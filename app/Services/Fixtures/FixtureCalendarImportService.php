@@ -266,12 +266,21 @@ class FixtureCalendarImportService
         return count($times) > 1 || count($rows) < 20;
     }
 
-    /** "2 - 1" once played, blank before. Never overwrites a stored score. */
+    /**
+     * "2 - 1" once played, blank before. Never overwrites a stored score,
+     * and never touches a fixture already marked finished or postponed.
+     *
+     * A missing score is a missing score whoever owns the row: the API only
+     * looks three days back, so a match it stopped reporting before anyone
+     * fetched the result would otherwise sit unscored forever, and every
+     * ticket carrying it would hang on "awaiting result". The kickoff has
+     * to be comfortably past so an in-play match is never scored early.
+     */
     private function fillResult(Fixture $fixture, string $result): bool
     {
-        if ($fixture->footballdata_match_id !== null
-            || $fixture->home_goals !== null
-            || $fixture->status !== Fixture::STATUS_SCHEDULED) {
+        if ($fixture->home_goals !== null
+            || $fixture->status !== Fixture::STATUS_SCHEDULED
+            || $fixture->kickoff_utc->isAfter(now('UTC')->subHours(3))) {
             return false;
         }
 

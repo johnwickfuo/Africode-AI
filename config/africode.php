@@ -56,6 +56,18 @@ return [
         'proxy' => env('FBREF_PROXY'),
     ],
 
+    // Nightly settlement.
+    'settle' => [
+        // Corners, cards and shots-on-target can only be scored once the
+        // match stats land, which is a night or two behind the result and
+        // sometimes never (FBref blocked, a division football-data.co.uk
+        // does not publish). Past this many days after kickoff a pick that
+        // still has no actual is voided rather than left pending forever —
+        // an unscoreable leg drops out of its ticket the way a bookmaker
+        // voids one, and voids never count towards the accuracy record.
+        'grace_days' => (int) env('SETTLE_GRACE_DAYS', 3),
+    ],
+
     // Bookmaker odds (football-data.co.uk fixtures.csv) and value bets.
     'odds' => [
         // Minimum model-vs-market probability edge for a "value" flag.

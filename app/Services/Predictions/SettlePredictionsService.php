@@ -16,25 +16,35 @@ use Illuminate\Support\Facades\Log;
  * rebuilds the model_accuracy summary table.
  *
  * Goals markets settle from the fixture result alone; corners, cards, and
- * shots-on-target need the FBref match stats, which can lag a result by a
- * night — rows whose actual value isn't known yet simply stay pending and
- * settle on a later run. Postponed fixtures void their markets.
+ * shots-on-target need the match stats, which can lag a result by a night —
+ * rows whose actual value isn't known yet stay pending and settle on a
+ * later run. Postponed fixtures void their markets.
+ *
+ * Nothing may hang forever. Some matches never get a result at all (no
+ * source covers the division that week) and some never get stats. Past
+ * `settle.grace_days` after kickoff, a pick that still cannot be scored is
+ * voided: it drops out of any ticket carrying it, exactly as a bookmaker
+ * voids an unsettleable leg, and never counts towards the accuracy record.
  */
 class SettlePredictionsService
 {
     /**
-     * @return array{settled: int, voided: int, awaiting_stats: int, accuracy_rows: int}
+     * @return array{settled: int, voided: int, awaiting_stats: int, voided_unscoreable: int, accuracy_rows: int}
      */
     public function run(): array
     {
-        $summary = ['settled' => 0, 'voided' => 0, 'awaiting_stats' => 0];
+        $summary = ['settled' => 0, 'voided' => 0, 'awaiting_stats' => 0, 'voided_unscoreable' => 0];
+
+        // A match that kicked off long enough ago is in scope even if no
+        // source ever marked it finished: leaving those out is what let
+        // tickets hang on "awaiting result" indefinitely.
+        $graceCutoff = now('UTC')->subDays((int) config('africode.settle.grace_days', 3));
 
         $pending = PredictionMarket::query()
             ->where('outcome', PredictionMarket::OUTCOME_PENDING)
-            ->whereHas('prediction.fixture', fn ($query) => $query->whereIn(
-                'status',
-                [Fixture::STATUS_FINISHED, Fixture::STATUS_POSTPONED],
-            ))
+            ->whereHas('prediction.fixture', fn ($query) => $query
+                ->whereIn('status', [Fixture::STATUS_FINISHED, Fixture::STATUS_POSTPONED])
+                ->orWhere('kickoff_utc', '<', $graceCutoff))
             ->with(['prediction.fixture.matchStats'])
             ->get();
 
@@ -54,6 +64,17 @@ class SettlePredictionsService
             $actual = $actuals[$market->market] ?? null;
 
             if ($actual === null) {
+                // Still worth waiting for, or never coming? Stats trail the
+                // result by a night or two; past the grace period they are
+                // not going to arrive, and an unscoreable pick is voided so
+                // its ticket can resolve on the legs that did settle.
+                if ($fixture->kickoff_utc->isBefore($graceCutoff)) {
+                    $market->update(['outcome' => PredictionMarket::OUTCOME_VOID, 'settled_at' => now()]);
+                    $summary['voided_unscoreable']++;
+
+                    continue;
+                }
+
                 $summary['awaiting_stats']++;
 
                 continue;
