@@ -295,6 +295,14 @@ If `voided_unscoreable` in the settlement log is consistently large, that
 is the stats import failing rather than normal lag — check
 `ImportCsvStatsJob` in `pipeline_runs`.
 
+Generation is idempotent while a ticket stands. The job runs every
+morning, but only definitions with no outstanding ticket are built — a
+ticket published for Saturday is not republished on Thursday and Friday.
+That keeps one ticket per definition instead of a stack of daily copies,
+and means a ticket does not change under someone who has already backed
+it. `africode:dedupe-accas` clears copies left by the old behaviour
+(reports by default, `--apply` to delete).
+
 A ticket lives on the accumulators page only while it can still be backed
 — that is, while at least one of its legs has yet to kick off. Once the
 last match starts it moves to the accuracy page, which keeps the twelve

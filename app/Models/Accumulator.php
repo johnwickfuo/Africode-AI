@@ -60,10 +60,32 @@ class Accumulator extends Model
         return $query->whereHas('legs.fixture', fn (Builder $fixture) => $fixture->where('kickoff_utc', '>', now('UTC')));
     }
 
+    /** In-memory counterpart of live(). Requires legs.fixture to be loaded. */
+    public function isLive(): bool
+    {
+        return $this->legs->contains(fn (AccumulatorLeg $leg) => $leg->fixture->kickoff_utc->isFuture());
+    }
+
     /** The mirror of live(): every leg has kicked off. */
     public function scopeStarted(Builder $query): Builder
     {
         return $query->whereDoesntHave('legs.fixture', fn (Builder $fixture) => $fixture->where('kickoff_utc', '>', now('UTC')));
+    }
+
+    /**
+     * What makes two tickets the same offer: the family, the per-leg
+     * ceiling and the target. A definition has at most one live ticket at
+     * a time — republishing it every morning would flood the record with
+     * copies, and would change a ticket somebody had already backed.
+     */
+    public function definitionKey(): string
+    {
+        return static::keyFor($this->family, $this->max_leg_odds, (int) $this->target_odds);
+    }
+
+    public static function keyFor(string $family, ?float $maxLegOdds, int $target): string
+    {
+        return $family.'|'.($maxLegOdds === null ? '' : number_format($maxLegOdds, 2)).'|'.$target;
     }
 
     /**

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Accumulator;
+use App\Models\PipelineRun;
 use App\Support\AccumulatorPresenter;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -23,14 +25,19 @@ class AccumulatorsController extends Controller
     public function __invoke(): Response
     {
         $displayTz = config('africode.display_timezone');
-        $latestGeneratedAt = Accumulator::max('generated_at');
 
-        $latest = $latestGeneratedAt === null
-            ? collect()
-            : Accumulator::where('generated_at', $latestGeneratedAt)
-                ->with(AccumulatorPresenter::relations())
-                ->get()
-                ->keyBy(fn (Accumulator $acca) => $this->key($acca->family, $acca->max_leg_odds, $acca->target_odds));
+        // A ticket stands until its last match kicks off, so the page is
+        // driven by what is outstanding rather than by the newest build.
+        $live = $this->newestPerDefinition(Accumulator::query()->live());
+
+        // For a definition with nothing live, the ticket that just ran —
+        // so the card can say it kicked off instead of "never built".
+        $started = $this->newestPerDefinition(
+            Accumulator::query()->started()->where('generated_at', '>=', now()->subDays(7)),
+        );
+
+        $lastRun = PipelineRun::lastSuccessfulRun('GenerateAccumulatorsJob')?->finished_at
+            ?? Accumulator::max('generated_at');
 
         $record = $this->record();
         $banker = config('africode.accas.banker');
@@ -44,7 +51,7 @@ class AccumulatorsController extends Controller
                     'label' => null,
                     'hint' => null,
                     'tickets' => $this->tickets(
-                        $latest, Accumulator::FAMILY_CLASSIC, null, config('africode.accas.tiers'),
+                        $live, $started, Accumulator::FAMILY_CLASSIC, null, config('africode.accas.tiers'),
                     ),
                 ]],
                 'record' => $record->where('family', Accumulator::FAMILY_CLASSIC)->values(),
@@ -57,7 +64,7 @@ class AccumulatorsController extends Controller
                     'label' => 'Max '.number_format((float) $cap, 2).' per leg',
                     'hint' => 'Every leg is a '.round(100 / (float) $cap).'%+ call.',
                     'tickets' => $this->tickets(
-                        $latest, Accumulator::FAMILY_BANKER, (float) $cap, $banker['targets'],
+                        $live, $started, Accumulator::FAMILY_BANKER, (float) $cap, $banker['targets'],
                     ),
                 ])->values()->all(),
                 'record' => $record->where('family', Accumulator::FAMILY_BANKER)->values(),
@@ -65,8 +72,8 @@ class AccumulatorsController extends Controller
         ];
 
         return Inertia::render('Accumulators', [
-            'generated_at' => $latestGeneratedAt !== null
-                ? Carbon::parse($latestGeneratedAt)->timezone($displayTz)->isoFormat('D MMM, HH:mm')
+            'generated_at' => $lastRun !== null
+                ? Carbon::parse($lastRun)->timezone($displayTz)->isoFormat('D MMM, HH:mm')
                 : null,
             'families' => $families,
             'max_legs' => (int) $banker['max_legs'],
@@ -74,37 +81,57 @@ class AccumulatorsController extends Controller
     }
 
     /**
-     * One card per configured tier. A tier whose ticket has already kicked
-     * off is flagged rather than shown: it cannot be backed any more, and
-     * calling it "unavailable" would wrongly suggest it was never built.
+     * One card per configured tier: the outstanding ticket if there is one,
+     * otherwise a flag for the ticket that has just run. Saying "not
+     * available" for a ticket that was built and played would be wrong.
      *
-     * @param  Collection<string, Accumulator>  $latest
+     * @param  Collection<string, Accumulator>  $live
+     * @param  Collection<string, Accumulator>  $started
      * @param  list<int|string>  $targets
      * @return list<array<string, mixed>>
      */
-    private function tickets(Collection $latest, string $family, ?float $maxLegOdds, array $targets): array
-    {
-        return collect($targets)->map(function ($target) use ($latest, $family, $maxLegOdds) {
-            /** @var Accumulator|null $accumulator */
-            $accumulator = $latest->get($this->key($family, $maxLegOdds, (int) $target));
+    private function tickets(
+        Collection $live,
+        Collection $started,
+        string $family,
+        ?float $maxLegOdds,
+        array $targets,
+    ): array {
+        return collect($targets)->map(function ($target) use ($live, $started, $family, $maxLegOdds) {
+            $key = Accumulator::keyFor($family, $maxLegOdds, (int) $target);
 
-            $started = $accumulator !== null && $accumulator->legs->every(
-                fn ($leg) => $leg->fixture->kickoff_utc->isPast(),
-            );
-
-            if ($accumulator === null || $started) {
-                return [
-                    'target' => (int) $target,
-                    'max_leg_odds' => $maxLegOdds,
-                    'available' => false,
-                    'started' => $started,
-                    'outcome' => $accumulator?->outcome,
-                    'legs' => [],
-                ];
+            if ($outstanding = $live->get($key)) {
+                return AccumulatorPresenter::present($outstanding);
             }
 
-            return AccumulatorPresenter::present($accumulator);
+            /** @var Accumulator|null $ran */
+            $ran = $started->get($key);
+
+            return [
+                'target' => (int) $target,
+                'max_leg_odds' => $maxLegOdds,
+                'available' => false,
+                'started' => $ran !== null,
+                'outcome' => $ran?->outcome,
+                'legs' => [],
+            ];
         })->values()->all();
+    }
+
+    /**
+     * The newest ticket per definition, so a definition never shows twice.
+     *
+     * @param  Builder<Accumulator>  $query
+     * @return Collection<string, Accumulator>
+     */
+    private function newestPerDefinition(Builder $query): Collection
+    {
+        return $query
+            ->with(AccumulatorPresenter::relations())
+            ->orderByDesc('generated_at')
+            ->get()
+            ->groupBy(fn (Accumulator $acca) => $acca->definitionKey())
+            ->map->first();
     }
 
     /**
@@ -130,10 +157,5 @@ class AccumulatorsController extends Controller
                 'won' => (int) $row->won,
                 'total' => (int) $row->total,
             ]);
-    }
-
-    private function key(string $family, ?float $maxLegOdds, int $target): string
-    {
-        return $family.'|'.($maxLegOdds === null ? '' : number_format($maxLegOdds, 2)).'|'.$target;
     }
 }

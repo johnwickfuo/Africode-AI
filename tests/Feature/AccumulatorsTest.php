@@ -556,6 +556,121 @@ class AccumulatorsTest extends TestCase
         );
     }
 
+    public function test_a_live_ticket_is_not_republished_by_the_next_run(): void
+    {
+        config(['africode.accas.tiers' => [3, 10]]);
+
+        foreach (range(0, 5) as $offset) {
+            $this->predictedFixture([
+                'goals|2.5|over' => 0.55,
+                'corners|9.5|over' => 0.60,
+            ], $offset);
+        }
+
+        $first = app(AccumulatorBuilderService::class)->run();
+        $this->assertSame([3, 10], $first['built']);
+
+        // The job runs again the next two mornings against the same card.
+        $second = app(AccumulatorBuilderService::class)->run();
+        app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame([], $second['built'], 'nothing new while the tickets stand');
+        $this->assertSame([3, 10], $second['kept']);
+        $this->assertSame(2, Accumulator::count(), 'one ticket per definition, not one per run');
+
+        // And the page still shows them, even though they are not from the
+        // newest build.
+        $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('families.0.groups.0.tickets.0.available', true)
+            ->where('families.0.groups.0.tickets.1.available', true)
+        );
+    }
+
+    public function test_a_fresh_ticket_is_built_once_the_old_one_has_run(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 0);
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 1);
+        app(AccumulatorBuilderService::class)->run();
+
+        // Those matches run; a new card appears.
+        Fixture::query()->update(['kickoff_utc' => now('UTC')->subHours(3)]);
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 2);
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 3);
+
+        $summary = app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame([3], $summary['built'], 'the definition is free again');
+        $this->assertSame(2, Accumulator::count());
+        $this->assertSame(1, Accumulator::live()->count());
+    }
+
+    public function test_dedupe_command_collapses_tickets_published_more_than_once(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 0);
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 1);
+
+        // Reproduce what the old daily rebuild left behind.
+        app(AccumulatorBuilderService::class)->run();
+        $original = Accumulator::firstOrFail();
+        foreach ([1, 2] as $day) {
+            $copy = $original->replicate()->fill(['generated_at' => now()->addDays($day)]);
+            $copy->save();
+            foreach ($original->legs as $leg) {
+                AccumulatorLeg::create($leg->only([
+                    'prediction_market_id', 'fixture_id', 'market', 'line',
+                    'direction', 'probability', 'odds',
+                ]) + ['accumulator_id' => $copy->id]);
+            }
+        }
+        $this->assertSame(3, Accumulator::count());
+
+        // Reports without deleting unless asked.
+        $this->artisan('africode:dedupe-accas')->assertSuccessful();
+        $this->assertSame(3, Accumulator::count());
+
+        $this->artisan('africode:dedupe-accas --apply')->assertSuccessful();
+
+        $this->assertSame(1, Accumulator::count());
+        $this->assertSame($original->id, Accumulator::firstOrFail()->id, 'the first published copy survives');
+        $this->assertSame(2, AccumulatorLeg::count(), 'orphan legs go with it');
+    }
+
+    public function test_dedupe_command_leaves_one_standing_ticket_per_definition(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->predictedFixture(['goals|2.5|over' => 0.55, 'corners|9.5|over' => 0.60], 0);
+        $this->predictedFixture(['goals|2.5|over' => 0.55, 'corners|9.5|over' => 0.60], 1);
+
+        app(AccumulatorBuilderService::class)->run();
+        $original = Accumulator::firstOrFail();
+
+        // A near-copy: same definition, still live, one different leg — the
+        // shape the old daily rebuild produced whenever the pool shifted.
+        $nearCopy = $original->replicate()->fill(['generated_at' => now()->addDay()]);
+        $nearCopy->save();
+        foreach (PredictionMarket::where('market', 'corners')->take(2)->get() as $market) {
+            AccumulatorLeg::create([
+                'accumulator_id' => $nearCopy->id,
+                'prediction_market_id' => $market->id,
+                'fixture_id' => $market->prediction->fixture_id,
+                'market' => 'corners', 'line' => 9.5, 'direction' => 'over',
+                'probability' => 0.60, 'odds' => 1.667,
+            ]);
+        }
+
+        $this->assertSame(2, Accumulator::live()->count());
+
+        $this->artisan('africode:dedupe-accas --apply')->assertSuccessful();
+
+        $this->assertSame(1, Accumulator::live()->count(), 'only one ticket may stand per definition');
+        $this->assertSame($original->id, Accumulator::firstOrFail()->id);
+    }
+
     public function test_job_and_command_wiring(): void
     {
         GenerateAccumulatorsJob::dispatchSync();

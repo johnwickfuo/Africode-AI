@@ -47,11 +47,38 @@ use Illuminate\Support\Facades\Log;
  *
  * Tiers the remaining pool cannot reach are skipped (shown as unavailable)
  * rather than built with weakened rules.
+ *
+ * Generation is idempotent while a ticket is live: the job runs every
+ * morning, but only definitions with no outstanding ticket are built. A
+ * ticket therefore stands until its last match kicks off, which is what
+ * makes it something anyone can actually act on.
  */
 class AccumulatorBuilderService
 {
+    /** @var Collection<string, Accumulator> live tickets, keyed by definition */
+    private Collection $live;
+
     /**
-     * @return array{built: list<int>, skipped: list<int>, legs: int, banker: array{built: list<string>, skipped: list<string>}}
+     * Calls already carried by a live ticket of this family, so a new
+     * ticket does not land on a pick an outstanding one already holds.
+     *
+     * @return array<string, true>
+     */
+    private function spentPicks(string $family): array
+    {
+        $spent = [];
+
+        foreach ($this->live->where('family', $family) as $accumulator) {
+            foreach ($accumulator->legs as $leg) {
+                $spent[$leg->fixture_id.'|'.$leg->market] = true;
+            }
+        }
+
+        return $spent;
+    }
+
+    /**
+     * @return array{built: list<int>, kept: list<int>, skipped: list<int>, legs: int, banker: array{built: list<string>, kept: list<string>, skipped: list<string>}}
      */
     public function run(): array
     {
@@ -59,12 +86,27 @@ class AccumulatorBuilderService
         $generatedAt = now();
 
         $summary = [
-            'built' => [], 'skipped' => [], 'legs' => 0,
-            'banker' => ['built' => [], 'skipped' => []],
+            'built' => [], 'kept' => [], 'skipped' => [], 'legs' => 0,
+            'banker' => ['built' => [], 'kept' => [], 'skipped' => []],
         ];
 
-        $classicUsed = [];
+        // A ticket published earlier that can still be backed is left alone.
+        // Rebuilding it every morning would republish the same offer daily,
+        // pile up identical copies in the record, and quietly change a
+        // ticket somebody may already have staked.
+        $this->live = Accumulator::live()->with('legs')->get()
+            ->keyBy(fn (Accumulator $acca) => $acca->definitionKey());
+
+        $classicUsed = $this->spentPicks(Accumulator::FAMILY_CLASSIC);
+
         foreach (config('africode.accas.tiers') as $target) {
+            $key = Accumulator::keyFor(Accumulator::FAMILY_CLASSIC, null, (int) $target);
+            if ($this->live->has($key)) {
+                $summary['kept'][] = (int) $target;
+
+                continue;
+            }
+
             $built = $this->buildAndStore(
                 target: (int) $target,
                 pool: $pool,
@@ -111,7 +153,7 @@ class AccumulatorBuilderService
     {
         $config = config('africode.accas.banker');
         $maxLegs = (int) $config['max_legs'];
-        $used = [];
+        $used = $this->spentPicks(Accumulator::FAMILY_BANKER);
 
         foreach ($config['caps'] as $cap) {
             $cap = (float) $cap;
@@ -119,6 +161,12 @@ class AccumulatorBuilderService
 
             foreach ($config['targets'] as $target) {
                 $label = number_format($cap, 2).'/'.$target.'x';
+
+                if ($this->live->has(Accumulator::keyFor(Accumulator::FAMILY_BANKER, $cap, (int) $target))) {
+                    $summary['banker']['kept'][] = $label;
+
+                    continue;
+                }
 
                 $built = $this->buildAndStore(
                     target: (int) $target,
