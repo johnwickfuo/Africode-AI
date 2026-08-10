@@ -276,6 +276,13 @@ call while no two tickets inside one family ever do.
 | Classic | 3x, 10x, 20x, 50x, 100x, 1000x, 10000x | any leg price; a few long calls carry the total |
 | Banker | 20x, 40x, 80x, 160x at each of three caps | no leg longer than 1.25, 1.40 or 1.60 |
 
+A ticket lives on the accumulators page only while it can still be backed
+— that is, while at least one of its legs has yet to kick off. Once the
+last match starts it moves to the accuracy page, which keeps the twelve
+most recent finished tickets in full. Settlement is overnight (03:30), so
+a ticket that ran yesterday evening reads "Awaiting result" until then;
+that is the honest state, not a gap.
+
 Every ticket's legs fall inside **two consecutive calendar days** (display
 timezone, `accas.window_days`), so a ticket settles as one weekend
 instead of dribbling out over a fortnight. Each ticket takes the earliest

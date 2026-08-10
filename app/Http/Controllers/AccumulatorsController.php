@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Accumulator;
-use App\Models\AccumulatorLeg;
+use App\Support\AccumulatorPresenter;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -15,6 +15,10 @@ class AccumulatorsController extends Controller
      * The latest generated accumulator set, split into its two families —
      * classic target-odds tickets, and banker tickets grouped by how much a
      * single leg is allowed to pay — plus the all-time record of each.
+     *
+     * Only tickets that can still be backed appear here. Once a ticket's
+     * last match kicks off it belongs to the record, not the shelf, and
+     * moves to the Accuracy page.
      */
     public function __invoke(): Response
     {
@@ -24,11 +28,7 @@ class AccumulatorsController extends Controller
         $latest = $latestGeneratedAt === null
             ? collect()
             : Accumulator::where('generated_at', $latestGeneratedAt)
-                ->with([
-                    'legs.fixture:id,kickoff_utc,kickoff_confirmed,home_team_id,away_team_id',
-                    'legs.fixture.homeTeam:id,short_name',
-                    'legs.fixture.awayTeam:id,short_name',
-                ])
+                ->with(AccumulatorPresenter::relations())
                 ->get()
                 ->keyBy(fn (Accumulator $acca) => $this->key($acca->family, $acca->max_leg_odds, $acca->target_odds));
 
@@ -74,7 +74,9 @@ class AccumulatorsController extends Controller
     }
 
     /**
-     * One card per configured tier, whether or not it was built today.
+     * One card per configured tier. A tier whose ticket has already kicked
+     * off is flagged rather than shown: it cannot be backed any more, and
+     * calling it "unavailable" would wrongly suggest it was never built.
      *
      * @param  Collection<string, Accumulator>  $latest
      * @param  list<int|string>  $targets
@@ -86,25 +88,22 @@ class AccumulatorsController extends Controller
             /** @var Accumulator|null $accumulator */
             $accumulator = $latest->get($this->key($family, $maxLegOdds, (int) $target));
 
-            return [
-                'target' => (int) $target,
-                'max_leg_odds' => $maxLegOdds,
-                'available' => $accumulator !== null,
-                'window' => $accumulator === null ? null : $this->window($accumulator),
-                'combined_odds' => $accumulator?->combined_odds,
-                'combined_probability' => $accumulator?->combined_probability,
-                'outcome' => $accumulator?->outcome,
-                'legs' => $accumulator?->legs->map(fn (AccumulatorLeg $leg) => [
-                    'match' => $leg->fixture->homeTeam->short_name.' v '.$leg->fixture->awayTeam->short_name,
-                    'fixture_id' => $leg->fixture_id,
-                    'kickoff' => $leg->fixture->kickoffLabel(),
-                    'market' => $leg->market,
-                    'line' => $leg->line,
-                    'direction' => $leg->direction,
-                    'probability' => $leg->probability,
-                    'odds' => $leg->odds,
-                ])->values(),
-            ];
+            $started = $accumulator !== null && $accumulator->legs->every(
+                fn ($leg) => $leg->fixture->kickoff_utc->isPast(),
+            );
+
+            if ($accumulator === null || $started) {
+                return [
+                    'target' => (int) $target,
+                    'max_leg_odds' => $maxLegOdds,
+                    'available' => false,
+                    'started' => $started,
+                    'outcome' => $accumulator?->outcome,
+                    'legs' => [],
+                ];
+            }
+
+            return AccumulatorPresenter::present($accumulator);
         })->values()->all();
     }
 
@@ -131,31 +130,6 @@ class AccumulatorsController extends Controller
                 'won' => (int) $row->won,
                 'total' => (int) $row->total,
             ]);
-    }
-
-    /**
-     * The days a ticket runs over — "Sat 15 Aug" for a single day, "Sat 15 –
-     * Sun 16 Aug" when it spans two. Derived from the legs, so it can never
-     * disagree with them.
-     */
-    private function window(Accumulator $accumulator): string
-    {
-        $displayTz = config('africode.display_timezone');
-
-        $kickoffs = $accumulator->legs
-            ->map(fn (AccumulatorLeg $leg) => $leg->fixture->kickoff_utc->timezone($displayTz))
-            ->sort()->values();
-
-        $first = $kickoffs->first();
-        $last = $kickoffs->last();
-
-        if ($first === null) {
-            return '';
-        }
-
-        return $first->isSameDay($last)
-            ? $first->isoFormat('ddd D MMM')
-            : $first->isoFormat('ddd D').' – '.$last->isoFormat('ddd D MMM');
     }
 
     private function key(string $family, ?float $maxLegOdds, int $target): string

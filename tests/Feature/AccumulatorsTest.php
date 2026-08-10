@@ -500,6 +500,62 @@ class AccumulatorsTest extends TestCase
             );
     }
 
+    public function test_a_ticket_whose_matches_have_started_leaves_the_accumulators_page(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 0);
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 1);
+        app(AccumulatorBuilderService::class)->run();
+
+        // While its matches are still ahead, the ticket is on the shelf.
+        $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('families.0.groups.0.tickets.0.available', true)
+            ->where('families.0.groups.0.tickets.0.started', false)
+        );
+        $this->get('/accuracy')->assertInertia(fn (AssertableInertia $page) => $page
+            ->count('accumulators', 0)
+        );
+
+        // Kick-off passes on every leg: it can no longer be backed.
+        Fixture::query()->update(['kickoff_utc' => now('UTC')->subHours(3)]);
+
+        $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('families.0.groups.0.tickets.0.available', false)
+            ->where('families.0.groups.0.tickets.0.started', true)
+            // Flagged as run, not as "never built".
+            ->count('families.0.groups.0.tickets.0.legs', 0)
+        );
+
+        $this->get('/accuracy')->assertInertia(fn (AssertableInertia $page) => $page
+            ->count('accumulators', 1)
+            ->where('accumulators.0.target', 3)
+            ->where('accumulators.0.outcome', 'pending')
+            ->count('accumulators.0.legs', 2)
+            ->has('accumulators.0.window')
+        );
+    }
+
+    public function test_a_partly_played_ticket_stays_on_the_accumulators_page(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $first = $this->predictedFixture(['goals|2.5|over' => 0.55], 0);
+        $this->predictedFixture(['goals|2.5|over' => 0.55], 1);
+        app(AccumulatorBuilderService::class)->run();
+
+        // One leg has kicked off, the other has not — the ticket is still
+        // live, because the day it belongs to is not over.
+        $first->update(['kickoff_utc' => now('UTC')->subHour()]);
+
+        $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('families.0.groups.0.tickets.0.available', true)
+        );
+        $this->get('/accuracy')->assertInertia(fn (AssertableInertia $page) => $page
+            ->count('accumulators', 0)
+        );
+    }
+
     public function test_job_and_command_wiring(): void
     {
         GenerateAccumulatorsJob::dispatchSync();

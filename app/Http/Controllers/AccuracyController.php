@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Accumulator;
 use App\Models\Prediction;
 use App\Models\PredictionMarket;
+use App\Support\AccumulatorPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -11,10 +13,16 @@ use Inertia\Response;
 
 class AccuracyController extends Controller
 {
+    /** How many finished tickets to keep on the page. */
+    private const FINISHED_ACCAS = 12;
+
     /**
      * The truth-teller page (spec 8.3): per-market hit rates over 30/90/all
      * days, headline Best Bet win rate, a calibration table, and
      * model-version comparison — all computed from settled market rows.
+     *
+     * Also where accumulators end up once their last match has kicked off,
+     * so a ticket that has run can still be read back in full.
      */
     public function __invoke(): Response
     {
@@ -27,7 +35,30 @@ class AccuracyController extends Controller
             'windows' => $windows,
             'model_versions' => $this->modelVersionComparison(),
             'result_models' => $this->resultModelComparison(),
+            'accumulators' => $this->finishedAccumulators(),
         ]);
+    }
+
+    /**
+     * The most recent tickets whose matches have all kicked off, newest
+     * first. Settlement runs overnight, so the newest of these often still
+     * read as pending — that is the honest state, not a gap.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function finishedAccumulators(): array
+    {
+        return Accumulator::query()
+            ->started()
+            ->with(AccumulatorPresenter::relations())
+            ->orderByDesc('generated_at')
+            ->orderBy('family')
+            ->orderBy('max_leg_odds')
+            ->orderBy('target_odds')
+            ->limit(self::FINISHED_ACCAS)
+            ->get()
+            ->map(fn (Accumulator $accumulator) => AccumulatorPresenter::present($accumulator))
+            ->all();
     }
 
     /**

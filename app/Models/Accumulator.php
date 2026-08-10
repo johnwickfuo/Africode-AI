@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -47,5 +48,43 @@ class Accumulator extends Model
     public function legs(): HasMany
     {
         return $this->hasMany(AccumulatorLeg::class);
+    }
+
+    /**
+     * Tickets you could still back: at least one leg has not kicked off.
+     * Once the last match starts a ticket is history, whether or not the
+     * nightly settlement has scored it yet.
+     */
+    public function scopeLive(Builder $query): Builder
+    {
+        return $query->whereHas('legs.fixture', fn (Builder $fixture) => $fixture->where('kickoff_utc', '>', now('UTC')));
+    }
+
+    /** The mirror of live(): every leg has kicked off. */
+    public function scopeStarted(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('legs.fixture', fn (Builder $fixture) => $fixture->where('kickoff_utc', '>', now('UTC')));
+    }
+
+    /**
+     * The days this ticket runs over — "Sat 15 Aug" for one day, "Sat 15 –
+     * Sun 16 Aug" across two. Read from the legs, so it can never disagree
+     * with them. Requires legs.fixture to be loaded.
+     */
+    public function windowLabel(): string
+    {
+        $displayTz = config('africode.display_timezone');
+
+        $kickoffs = $this->legs
+            ->map(fn (AccumulatorLeg $leg) => $leg->fixture->kickoff_utc->timezone($displayTz))
+            ->sort()->values();
+
+        if ($kickoffs->isEmpty()) {
+            return '';
+        }
+
+        return $kickoffs->first()->isSameDay($kickoffs->last())
+            ? $kickoffs->first()->isoFormat('ddd D MMM')
+            : $kickoffs->first()->isoFormat('ddd D').' – '.$kickoffs->last()->isoFormat('ddd D MMM');
     }
 }

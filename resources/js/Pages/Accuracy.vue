@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '../Layouts/AppLayout.vue';
+import AccaTicket from '../Components/AccaTicket.vue';
 import EmptyState from '../Components/EmptyState.vue';
 import PageHeader from '../Components/PageHeader.vue';
 import SectionHeading from '../Components/SectionHeading.vue';
@@ -12,7 +13,11 @@ const props = defineProps({
     windows: { type: Object, required: true },
     model_versions: { type: Array, default: () => [] },
     result_models: { type: Array, default: () => [] },
+    accumulators: { type: Array, default: () => [] },
 });
+
+const ticketName = (ticket) =>
+    ticket.max_leg_odds ? `Max ${ticket.max_leg_odds.toFixed(2)} per leg` : 'Classic';
 
 const windowOptions = [
     { key: '30', label: 'Last 30 days' },
@@ -221,6 +226,22 @@ const gapClass = (gap) => {
                     </span>
                 </li>
             </ul>
+        </section>
+
+        <!-- Accumulators that have run -->
+        <section v-if="accumulators.length" class="mb-7">
+            <SectionHeading
+                title="Accumulators that have run"
+                hint="Tickets leave the accumulators page once their last match kicks off. Results are scored overnight."
+            />
+            <div class="space-y-3.5">
+                <div v-for="ticket in accumulators" :key="ticket.id">
+                    <p class="mb-1.5 text-[11px] font-bold uppercase tracking-[.14em] text-ink-500">
+                        {{ ticketName(ticket) }}
+                    </p>
+                    <AccaTicket :ticket="ticket" finished />
+                </div>
+            </div>
         </section>
     </AppLayout>
 </template>
