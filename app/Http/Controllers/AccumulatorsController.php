@@ -18,23 +18,18 @@ class AccumulatorsController extends Controller
      * classic target-odds tickets, and banker tickets grouped by how much a
      * single leg is allowed to pay — plus the all-time record of each.
      *
-     * Only tickets that can still be backed appear here. Once a ticket's
-     * last match kicks off it belongs to the record, not the shelf, and
-     * moves to the Accuracy page.
+     * Only tickets that can still be backed appear here. Once enough of a
+     * ticket has kicked off it retires: it leaves this page for the
+     * Accuracy page, and its slot is filled by a fresh ticket on the next
+     * build.
      */
     public function __invoke(): Response
     {
         $displayTz = config('africode.display_timezone');
 
-        // A ticket stands until its last match kicks off, so the page is
-        // driven by what is outstanding rather than by the newest build.
+        // Driven by what is outstanding, not by the newest build: a ticket
+        // is carried across builds until it retires.
         $live = $this->newestPerDefinition(Accumulator::query()->live());
-
-        // For a definition with nothing live, the ticket that just ran —
-        // so the card can say it kicked off instead of "never built".
-        $started = $this->newestPerDefinition(
-            Accumulator::query()->started()->where('generated_at', '>=', now()->subDays(7)),
-        );
 
         $lastRun = PipelineRun::lastSuccessfulRun('GenerateAccumulatorsJob')?->finished_at
             ?? Accumulator::max('generated_at');
@@ -51,7 +46,7 @@ class AccumulatorsController extends Controller
                     'label' => null,
                     'hint' => null,
                     'tickets' => $this->tickets(
-                        $live, $started, Accumulator::FAMILY_CLASSIC, null, config('africode.accas.tiers'),
+                        $live, Accumulator::FAMILY_CLASSIC, null, config('africode.accas.tiers'),
                     ),
                 ]],
                 'record' => $record->where('family', Accumulator::FAMILY_CLASSIC)->values(),
@@ -64,7 +59,7 @@ class AccumulatorsController extends Controller
                     'label' => 'Max '.number_format((float) $cap, 2).' per leg',
                     'hint' => 'Every leg is a '.round(100 / (float) $cap).'%+ call.',
                     'tickets' => $this->tickets(
-                        $live, $started, Accumulator::FAMILY_BANKER, (float) $cap, $banker['targets'],
+                        $live, Accumulator::FAMILY_BANKER, (float) $cap, $banker['targets'],
                     ),
                 ])->values()->all(),
                 'record' => $record->where('family', Accumulator::FAMILY_BANKER)->values(),
@@ -81,40 +76,27 @@ class AccumulatorsController extends Controller
     }
 
     /**
-     * One card per configured tier: the outstanding ticket if there is one,
-     * otherwise a flag for the ticket that has just run. Saying "not
-     * available" for a ticket that was built and played would be wrong.
+     * One card per configured tier, holding whatever is outstanding for it.
+     * A retired ticket is never shown here — it has been replaced, or is
+     * waiting to be on the next build.
      *
      * @param  Collection<string, Accumulator>  $live
-     * @param  Collection<string, Accumulator>  $started
      * @param  list<int|string>  $targets
      * @return list<array<string, mixed>>
      */
-    private function tickets(
-        Collection $live,
-        Collection $started,
-        string $family,
-        ?float $maxLegOdds,
-        array $targets,
-    ): array {
-        return collect($targets)->map(function ($target) use ($live, $started, $family, $maxLegOdds) {
-            $key = Accumulator::keyFor($family, $maxLegOdds, (int) $target);
+    private function tickets(Collection $live, string $family, ?float $maxLegOdds, array $targets): array
+    {
+        return collect($targets)->map(function ($target) use ($live, $family, $maxLegOdds) {
+            $outstanding = $live->get(Accumulator::keyFor($family, $maxLegOdds, (int) $target));
 
-            if ($outstanding = $live->get($key)) {
-                return AccumulatorPresenter::present($outstanding);
-            }
-
-            /** @var Accumulator|null $ran */
-            $ran = $started->get($key);
-
-            return [
-                'target' => (int) $target,
-                'max_leg_odds' => $maxLegOdds,
-                'available' => false,
-                'started' => $ran !== null,
-                'outcome' => $ran?->outcome,
-                'legs' => [],
-            ];
+            return $outstanding === null
+                ? [
+                    'target' => (int) $target,
+                    'max_leg_odds' => $maxLegOdds,
+                    'available' => false,
+                    'legs' => [],
+                ]
+                : AccumulatorPresenter::present($outstanding);
         })->values()->all();
     }
 

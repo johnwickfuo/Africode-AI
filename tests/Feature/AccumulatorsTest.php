@@ -511,7 +511,6 @@ class AccumulatorsTest extends TestCase
         // While its matches are still ahead, the ticket is on the shelf.
         $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
             ->where('families.0.groups.0.tickets.0.available', true)
-            ->where('families.0.groups.0.tickets.0.started', false)
         );
         $this->get('/accuracy')->assertInertia(fn (AssertableInertia $page) => $page
             ->count('accumulators', 0)
@@ -522,8 +521,6 @@ class AccumulatorsTest extends TestCase
 
         $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
             ->where('families.0.groups.0.tickets.0.available', false)
-            ->where('families.0.groups.0.tickets.0.started', true)
-            // Flagged as run, not as "never built".
             ->count('families.0.groups.0.tickets.0.legs', 0)
         );
 
@@ -536,24 +533,70 @@ class AccumulatorsTest extends TestCase
         );
     }
 
-    public function test_a_partly_played_ticket_stays_on_the_accumulators_page(): void
+    public function test_a_ticket_retires_once_thirty_percent_of_it_has_kicked_off(): void
     {
-        config(['africode.accas.tiers' => [3]]);
+        config([
+            'africode.accas.tiers' => [100],
+            'africode.accas.retire_at_started_share' => 0.30,
+        ]);
 
-        $first = $this->predictedFixture(['goals|2.5|over' => 0.55], 0);
-        $this->predictedFixture(['goals|2.5|over' => 0.55], 1);
+        // Ten 1.82 legs available; reaching 100x takes eight of them.
+        $this->manyPredictedFixtures(10, ['goals|2.5|over' => 0.55]);
         app(AccumulatorBuilderService::class)->run();
 
-        // One leg has kicked off, the other has not — the ticket is still
-        // live, because the day it belongs to is not over.
-        $first->update(['kickoff_utc' => now('UTC')->subHour()]);
+        $acca = Accumulator::with('legs')->firstOrFail();
+        $this->assertSame(8, $acca->legs_count);
 
+        $kickOff = function (int $count) use ($acca) {
+            Fixture::whereIn('id', $acca->legs->take($count)->pluck('fixture_id'))
+                ->update(['kickoff_utc' => now('UTC')->subHour()]);
+        };
+
+        // Two of eight is a quarter — still worth backing.
+        $kickOff(2);
+        $this->assertSame(1, Accumulator::live()->count());
         $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
             ->where('families.0.groups.0.tickets.0.available', true)
         );
-        $this->get('/accuracy')->assertInertia(fn (AssertableInertia $page) => $page
-            ->count('accumulators', 0)
+
+        // A third takes it past the line, with five matches still to play.
+        $kickOff(3);
+        $this->assertSame(0, Accumulator::live()->count());
+        $this->assertSame(1, Accumulator::started()->count());
+        $this->get('/accumulators')->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('families.0.groups.0.tickets.0.available', false)
         );
+        // It is not lost — it moves to the results, still awaiting its score.
+        $this->get('/accuracy')->assertInertia(fn (AssertableInertia $page) => $page
+            ->count('accumulators', 1)
+            ->where('accumulators.0.outcome', 'pending')
+        );
+    }
+
+    public function test_a_retired_ticket_frees_its_slot_for_a_replacement(): void
+    {
+        config([
+            'africode.accas.tiers' => [3],
+            'africode.accas.retire_at_started_share' => 0.30,
+        ]);
+
+        $this->manyPredictedFixtures(2, ['goals|2.5|over' => 0.55]);
+        app(AccumulatorBuilderService::class)->run();
+
+        $original = Accumulator::with('legs')->firstOrFail();
+
+        // One of two legs kicks off: half the ticket, so it retires.
+        Fixture::whereIn('id', $original->legs->take(1)->pluck('fixture_id'))
+            ->update(['kickoff_utc' => now('UTC')->subHour()]);
+        $this->assertSame(0, Accumulator::live()->count());
+
+        // A fresh card, and the next hourly build fills the empty slot.
+        $this->manyPredictedFixtures(2, ['goals|2.5|over' => 0.55], teamOffset: 2);
+        $summary = app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame([3], $summary['built'], 'the slot is free again');
+        $this->assertSame(1, Accumulator::live()->count());
+        $this->assertNotSame($original->id, Accumulator::live()->firstOrFail()->id);
     }
 
     public function test_a_live_ticket_is_not_republished_by_the_next_run(): void

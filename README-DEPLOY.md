@@ -263,7 +263,7 @@ the file.
 | 04:30 | `ScrapePlayerStatsJob`   | FBref player stats (adds shots-on-target) — only runs when `FBREF_PROXY` is set |
 | 05:45 | `ImportOddsJob`          | bookmaker odds for upcoming fixtures (free fixtures.csv) — powers the value-bet comparison |
 | 06:00 | `GeneratePredictionsJob` | runs the champion model (all markets incl. 1X2) and the ML challenger for the next 7 days of fixtures |
-| 06:30 | `GenerateAccumulatorsJob` | builds the daily accumulator set: classic 3x-10000x plus the banker tickets |
+| :30 hourly | `GenerateAccumulatorsJob` | refills any ticket slot with nothing standing: classic 3x-10000x plus the banker tickets |
 
 ### Accumulator families
 
@@ -304,11 +304,18 @@ it. `africode:dedupe-accas` clears copies left by the old behaviour
 (reports by default, `--apply` to delete).
 
 A ticket lives on the accumulators page only while it can still be backed
-— that is, while at least one of its legs has yet to kick off. Once the
-last match starts it moves to the accuracy page, which keeps the twelve
-most recent finished tickets in full. Settlement is overnight (03:30), so
-a ticket that ran yesterday evening reads "Awaiting result" until then;
-that is the honest state, not a gap.
+in full. It **retires once 30% of its legs have kicked off**
+(`accas.retire_at_started_share`) — waiting for the last match would
+leave a ticket nobody can place sitting there for most of a weekend — and
+moves to the accuracy page, which keeps the twelve most recent in full.
+Settlement is overnight (03:30), so a retired ticket reads "Awaiting
+result" until its matches have run and been scored; that is the honest
+state, not a gap.
+
+Because a ticket can retire at any hour, `GenerateAccumulatorsJob` runs
+**hourly at :30** rather than once a morning, so a vacated slot is
+refilled within the hour. The build is idempotent while a ticket stands,
+so a run with nothing to do costs one query.
 
 Every ticket's legs fall inside **two consecutive calendar days** (display
 timezone, `accas.window_days`), so a ticket settles as one weekend

@@ -51,26 +51,52 @@ class Accumulator extends Model
     }
 
     /**
-     * Tickets you could still back: at least one leg has not kicked off.
-     * Once the last match starts a ticket is history, whether or not the
-     * nightly settlement has scored it yet.
+     * Tickets worth putting in front of anyone: fewer than
+     * `accas.retire_at_started_share` of their legs have kicked off.
+     *
+     * A ticket is not much use once a chunk of it is already running — the
+     * price has moved and nobody can back it whole — so it retires well
+     * before its last match rather than sitting on the shelf all weekend.
      */
     public function scopeLive(Builder $query): Builder
     {
-        return $query->whereHas('legs.fixture', fn (Builder $fixture) => $fixture->where('kickoff_utc', '>', now('UTC')));
+        return $query->whereRaw('('.self::STARTED_LEGS_SQL.') < accumulators.legs_count * ?', [
+            now('UTC'), self::retireShare(),
+        ]);
+    }
+
+    /** The mirror of live(): retired, whether or not it has been scored. */
+    public function scopeStarted(Builder $query): Builder
+    {
+        return $query->whereRaw('('.self::STARTED_LEGS_SQL.') >= accumulators.legs_count * ?', [
+            now('UTC'), self::retireShare(),
+        ]);
     }
 
     /** In-memory counterpart of live(). Requires legs.fixture to be loaded. */
     public function isLive(): bool
     {
-        return $this->legs->contains(fn (AccumulatorLeg $leg) => $leg->fixture->kickoff_utc->isFuture());
+        if ($this->legs->isEmpty()) {
+            return false;
+        }
+
+        $started = $this->legs->filter(fn (AccumulatorLeg $leg) => $leg->fixture->kickoff_utc->isPast())->count();
+
+        return $started < $this->legs->count() * self::retireShare();
     }
 
-    /** The mirror of live(): every leg has kicked off. */
-    public function scopeStarted(Builder $query): Builder
+    private static function retireShare(): float
     {
-        return $query->whereDoesntHave('legs.fixture', fn (Builder $fixture) => $fixture->where('kickoff_utc', '>', now('UTC')));
+        return (float) config('africode.accas.retire_at_started_share', 0.30);
     }
+
+    /** Legs of the accumulator in the outer query whose match has kicked off. */
+    private const STARTED_LEGS_SQL = <<<'SQL'
+        select count(*) from accumulator_legs
+        inner join fixtures on fixtures.id = accumulator_legs.fixture_id
+        where accumulator_legs.accumulator_id = accumulators.id
+          and fixtures.kickoff_utc <= ?
+        SQL;
 
     /**
      * What makes two tickets the same offer: the family, the per-leg

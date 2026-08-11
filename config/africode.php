@@ -146,6 +146,12 @@ return [
         // takes the earliest window it can complete in.
         'window_days' => 2,
 
+        // A ticket retires once this share of its legs has kicked off: it
+        // leaves the accumulators page and its definition is free for a
+        // fresh ticket. Waiting for the last leg would leave a ticket
+        // nobody can back sitting on the shelf for most of a weekend.
+        'retire_at_started_share' => 0.30,
+
         // "Banker" tickets: a big total built only from short, high-
         // probability legs, so no single result carries the ticket. Each
         // cap is the most a single leg may pay — 1.25 means every leg is

@@ -72,6 +72,11 @@ Schedule::job(new GeneratePredictionsJob)
     ->dailyAt('06:00')
     ->timezone('Africa/Lagos');
 
+// Hourly, not daily: a ticket retires as its matches kick off, and the
+// replacement should appear within the hour rather than the next morning.
+// The build is idempotent while a ticket stands — only definitions with
+// nothing outstanding are built — so a run with nothing to do costs a
+// single query.
 Schedule::job(new GenerateAccumulatorsJob)
-    ->dailyAt('06:30')
+    ->hourlyAt(30)
     ->timezone('Africa/Lagos');

@@ -30,19 +30,9 @@ const pct = (probability) => {
 </script>
 
 <template>
-    <!-- A ticket that has run is a single clickable row: the header says
-         where it went, and its legs live on the accuracy page. -->
-    <component
-        :is="ticket.started ? Link : 'article'"
-        v-bind="ticket.started ? { href: '/accuracy' } : {}"
-        class="card animate-fade-up"
-        :class="[ticket.available ? '' : 'opacity-70', ticket.started ? 'block transition hover:border-ink-700' : '']"
-    >
+    <article class="card animate-fade-up" :class="ticket.available ? '' : 'opacity-70'">
         <!-- Ticket header -->
-        <div
-            class="flex items-center gap-3 p-4"
-            :class="ticket.started ? '' : 'flex-wrap border-b border-dashed border-ink-700/70'"
-        >
+        <div class="flex flex-wrap items-center gap-3 border-b border-dashed border-ink-700/70 p-4">
             <span class="rounded-xl bg-brand-gradient px-3 py-1.5 text-base font-black tracking-tight text-ink-950 shadow-glow-sm">
                 {{ ticket.target }}x
             </span>
@@ -72,16 +62,7 @@ const pct = (probability) => {
                     Awaiting result
                 </span>
             </template>
-            <template v-else-if="ticket.started">
-                <span class="min-w-0 truncate text-sm text-ink-500">Kicked off</span>
-                <OutcomeBadge
-                    v-if="ticket.outcome && ticket.outcome !== 'pending'"
-                    :outcome="ticket.outcome"
-                    class="ml-auto"
-                />
-                <span v-else class="ml-auto shrink-0 tag bg-ink-800 !text-ink-400">Awaiting result</span>
-            </template>
-            <p v-else class="min-w-0 text-sm text-ink-500">Not available today</p>
+            <p v-else class="min-w-0 text-sm text-ink-500">Not available right now</p>
         </div>
 
         <!-- Legs -->
@@ -119,14 +100,16 @@ const pct = (probability) => {
             </button>
         </template>
 
-        <!-- A ticket that has run needs no body: the header says where it
-             went, and a fresh one is built each morning. -->
-        <p v-else-if="!ticket.started" class="px-4 py-4 text-sm leading-relaxed text-ink-500">
-            Not enough independent picks to reach {{ ticket.target }}x
+        <p v-else class="px-4 py-4 text-sm leading-relaxed text-ink-500">
+            No ticket can reach {{ ticket.target }}x
             <template v-if="ticket.max_leg_odds">
                 using legs no longer than {{ ticket.max_leg_odds.toFixed(2) }}
             </template>
-            right now — this ticket returns once more fixtures are predicted.
+            from the fixtures left to play. A replacement appears as soon as one can be built;
+            the last one is on the
+            <Link href="/accuracy" class="text-brand-400 underline-offset-2 hover:underline">
+                accuracy page
+            </Link>.
         </p>
-    </component>
+    </article>
 </template>
