@@ -485,6 +485,9 @@ class AccumulatorsTest extends TestCase
                 ->where('families.0.groups.0.tickets.0.target', 3)
                 ->where('families.0.groups.0.tickets.0.available', true)
                 ->count('families.0.groups.0.tickets.0.legs', 2)
+                // A ticket spans divisions, so each leg says which one.
+                ->where('families.0.groups.0.tickets.0.legs.0.league', 'PL')
+                ->where('families.0.groups.0.tickets.0.legs.0.league_name', 'Premier League')
                 ->where('families.0.groups.0.tickets.1.target', 10000)
                 ->where('families.0.groups.0.tickets.1.available', false)
                 // Banker: one group per cap, each offering every target.

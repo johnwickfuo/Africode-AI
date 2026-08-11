@@ -30,6 +30,10 @@ class AccumulatorPresenter
             'outcome' => $accumulator->outcome,
             'legs' => $accumulator->legs->map(fn (AccumulatorLeg $leg) => [
                 'match' => $leg->fixture->homeTeam->short_name.' v '.$leg->fixture->awayTeam->short_name,
+                // A ticket mixes a dozen divisions, and short names alone
+                // ("MID v LIN") do not say where to find the match.
+                'league' => $leg->fixture->league->code,
+                'league_name' => $leg->fixture->league->name,
                 'fixture_id' => $leg->fixture_id,
                 'kickoff' => $leg->fixture->kickoffLabel(),
                 'market' => $leg->market,
@@ -49,7 +53,8 @@ class AccumulatorPresenter
     public static function relations(): array
     {
         return [
-            'legs.fixture:id,kickoff_utc,kickoff_confirmed,home_team_id,away_team_id',
+            'legs.fixture:id,league_id,kickoff_utc,kickoff_confirmed,home_team_id,away_team_id',
+            'legs.fixture.league:id,code,name',
             'legs.fixture.homeTeam:id,short_name',
             'legs.fixture.awayTeam:id,short_name',
         ];

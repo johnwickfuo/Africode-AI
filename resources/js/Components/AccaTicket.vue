@@ -79,9 +79,16 @@ const pct = (probability) => {
                         </p>
                         <Link
                             :href="`/match/${leg.fixture_id}`"
-                            class="mt-0.5 block truncate text-xs text-ink-500 transition hover:text-ink-300"
+                            class="mt-1 flex items-center gap-1.5 truncate text-xs text-ink-500 transition hover:text-ink-300"
                         >
-                            {{ leg.match }} · {{ leg.kickoff }}
+                            <span
+                                v-if="leg.league"
+                                class="shrink-0 rounded bg-ink-800 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-brand-400"
+                                :title="leg.league_name"
+                            >
+                                {{ leg.league }}
+                            </span>
+                            <span class="truncate">{{ leg.match }} · {{ leg.kickoff }}</span>
                         </Link>
                     </div>
                     <span class="shrink-0 font-mono text-sm font-semibold text-ink-300">
