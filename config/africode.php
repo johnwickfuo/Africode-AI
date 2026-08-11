@@ -134,7 +134,7 @@ return [
 
     // Daily accumulators built from model fair odds (1/probability).
     'accas' => [
-        'tiers' => [3, 10, 20, 50, 100, 1000, 10000],
+        'tiers' => [3, 5, 10, 20, 50, 100, 1000, 10000],
         // Leg eligibility band: floor keeps near-coin-flips out, ceiling
         // keeps trivial "over 0.5 goals" legs out (same ethos as Best Bets).
         'leg_min_prob' => 0.55,
@@ -157,13 +157,16 @@ return [
         // cap is the most a single leg may pay — 1.25 means every leg is
         // an 80%+ call — and each is offered at four target totals.
         //
-        // The arithmetic is unforgiving: 20x from 1.25 legs needs at least
-        // 14 of them and realistically closer to 20, one per fixture, so
-        // the tighter caps only fill on a busy weekend. Tiers the card
-        // cannot reach are shown as unavailable rather than padded out.
+        // The arithmetic is unforgiving at the top: 20x from 1.25 legs needs
+        // at least 14 of them and realistically closer to 20, one per
+        // fixture, so the tighter caps only fill their big targets on a busy
+        // weekend. The short targets are easy by comparison — 3x out of 1.25
+        // legs is five picks — and give the same safe-leg idea at a stake
+        // most people would actually place. Tiers the card cannot reach are
+        // shown as unavailable rather than padded out.
         'banker' => [
             'caps' => [1.25, 1.40, 1.60],
-            'targets' => [20, 40, 80, 160],
+            'targets' => [3, 5, 10, 20, 40, 80, 160],
             'max_legs' => 25,
         ],
     ],

@@ -273,8 +273,12 @@ call while no two tickets inside one family ever do.
 
 | Family | Tickets | Rule |
 |---|---|---|
-| Classic | 3x, 10x, 20x, 50x, 100x, 1000x, 10000x | any leg price; a few long calls carry the total |
-| Banker | 20x, 40x, 80x, 160x at each of three caps | no leg longer than 1.25, 1.40 or 1.60 |
+| Classic | 3x, 5x, 10x, 20x, 50x, 100x, 1000x, 10000x | any leg price; a few long calls carry the total |
+| Banker | 3x, 5x, 10x, 20x, 40x, 80x, 160x at each of three caps | no leg longer than 1.25, 1.40 or 1.60 |
+
+Twenty-nine tickets in total. The short banker targets carry the same
+safe-leg idea at a stake most people would actually place: 3x out of 1.25
+legs is five picks, against twenty-four for 160x.
 
 ### Settlement, and why a pick may end up void
 
