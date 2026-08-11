@@ -549,7 +549,6 @@ def run_challenger(payload):
 
 def evaluate_fixture(fixture, league, config):
     rows = []
-    referee_known = False
 
     goals = goals_markets(fixture, league)
     if goals:
@@ -559,9 +558,14 @@ def evaluate_fixture(fixture, league, config):
     if corners:
         rows += corners
 
-    cards, referee_known = cards_markets(fixture, league)
-    if cards:
-        rows += cards
+    # Cards need a named referee to be worth anything, and only a handful
+    # of divisions publish one. Elsewhere the market is not offered at all.
+    cards_leagues = config.get("cards_leagues")
+    referee_known = False
+    if cards_leagues is None or fixture.get("league_code") in cards_leagues:
+        cards, referee_known = cards_markets(fixture, league)
+        if cards:
+            rows += cards
 
     sot = sot_markets(fixture)
     if sot:
@@ -590,7 +594,12 @@ def main():
 
     payload = json.loads(Path(args.input).read_text())
     config = payload.get("config", {})
-    league_averages = payload.get("league_averages", {})
+    # PHP hands us a map keyed by league id, but an EMPTY map encodes as a
+    # JSON list, which used to take the whole run down on a database with
+    # no finished fixtures yet.
+    league_averages = payload.get("league_averages") or {}
+    if not isinstance(league_averages, dict):
+        league_averages = {}
 
     predictions = []
     skipped = []

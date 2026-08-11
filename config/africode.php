@@ -73,26 +73,36 @@ return [
         // Minimum model-vs-market probability edge for a "value" flag.
         'value_edge_threshold' => (float) env('VALUE_EDGE_THRESHOLD', 0.05),
 
-        // What a mainstream book keeps on each market, as an overround on
-        // the fair price: a pick we rate at 80% (fair 1.25) is offered at
-        // 1/(0.80 x 1.08) = 1.16 on a market carrying 8%.
+        // What a book keeps on each market, as an overround on the fair
+        // price: a pick we rate at 80% (fair 1.25) is offered at
+        // 1/(0.80 x 1.09) = 1.15 on a market carrying 9%.
         //
         // Used only where nobody publishes a real price — 1X2 and the 2.5
-        // goals line come from football-data.co.uk instead. The going rate
-        // is tighter on the headline markets and wider on the ones books
-        // treat as a sideshow, which is most of what a ticket is built
-        // from. Raise these if slips keep coming back shorter than the
-        // site said; they are the single dial for that.
+        // goals line come from football-data.co.uk instead.
+        //
+        // The two headline figures are measured, not guessed: across a
+        // round of football-data.co.uk's own fixtures the median overround
+        // is 9.1% on 1X2 and 7.9% on over/under 2.5, averaged over the ~10
+        // books it samples. The rest are those anchors widened, because a
+        // book charges more on the markets it treats as a sideshow — which
+        // is most of what a ticket is built from.
         'margin' => [
-            'result' => 0.05,
-            'goals' => 0.06,
-            'btts' => 0.07,
-            'team_goals_home' => 0.08,
-            'team_goals_away' => 0.08,
-            'corners' => 0.09,
-            'cards' => 0.09,
-            'default' => 0.08,
+            'result' => 0.09,
+            'goals' => 0.09,
+            'btts' => 0.10,
+            'team_goals_home' => 0.12,
+            'team_goals_away' => 0.12,
+            'corners' => 0.13,
+            'cards' => 0.13,
+            'default' => 0.11,
         ],
+
+        // Those figures come from European books. A typical African book —
+        // SportyBet, Bet9ja, MSport — runs wider, so scale everything by
+        // this. 1.0 keeps the European numbers; 1.2 to 1.4 is the usual
+        // range. `africode:check-pricing` reports the multiplier that fits
+        // the prices actually being published, which beats guessing.
+        'margin_multiplier' => (float) env('ODDS_MARGIN_MULTIPLIER', 1.0),
     ],
 
     // Prior profile for clubs with no history in the data (promoted sides).
@@ -136,6 +146,13 @@ return [
         ],
         // Lines this low pay ~1.05 and read as filler even when available.
         'min_headline_line' => 1.5,
+
+        // Cards are only predicted where the inputs are good enough to
+        // justify it. The model leans on the referee's own average, and
+        // referee assignments are published for the big five and almost
+        // nowhere else; without one it falls back to a league average and
+        // is really just guessing. Better to say nothing.
+        'cards_leagues' => ['PL', 'PD', 'SA', 'BL1', 'FL1'],
     ],
 
     // Best Bet eligibility window (spec section 7.5).

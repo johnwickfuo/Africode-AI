@@ -77,7 +77,7 @@ class GeneratePredictionsService
     {
         $fixtures = Fixture::upcoming()
             ->where('kickoff_utc', '<=', now('UTC')->addDays((int) config('africode.predict.days_ahead')))
-            ->with(['homeTeam:id,name', 'awayTeam:id,name', 'referee'])
+            ->with(['league:id,code', 'homeTeam:id,name', 'awayTeam:id,name', 'referee'])
             ->get();
 
         return [
@@ -87,12 +87,14 @@ class GeneratePredictionsService
                 'best_bet_max_prob' => config('africode.best_bet.max_prob'),
                 'bettable_markets' => config('africode.markets.bettable'),
                 'min_headline_line' => config('africode.markets.min_headline_line'),
+                'cards_leagues' => config('africode.markets.cards_leagues'),
             ],
             'league_averages' => $this->leagueAverages(),
             'training' => $this->challengerTrainingRows(),
             'fixtures' => $fixtures->map(fn (Fixture $fixture) => [
                 'fixture_id' => $fixture->id,
                 'league_id' => $fixture->league_id,
+                'league_code' => $fixture->league->code,
                 'kickoff_utc' => $fixture->kickoff_utc->toIso8601String(),
                 'is_derby' => $fixture->is_derby,
                 // Pre-match form for the challenger, from the same history

@@ -48,12 +48,13 @@ class MarketPricing
         ];
     }
 
-    /** The overround a mainstream book takes on this market. */
+    /** The overround a book takes on this market. */
     public function margin(string $market): float
     {
         $margins = config('africode.odds.margin', []);
+        $base = (float) ($margins[$market] ?? $margins['default'] ?? 0.09);
 
-        return (float) ($margins[$market] ?? $margins['default'] ?? 0.07);
+        return $base * (float) config('africode.odds.margin_multiplier', 1.0);
     }
 
     /**

@@ -300,7 +300,28 @@ intended to pay about 3x on the slip. Two sources, in order:
    publishes; it has no corners, cards, team goals or other goal lines.
 2. **An estimate** for everything else: the fair price marked up by the
    going overround for that market (`odds.margin` in
-   `config/africode.php`, 5% on 1X2 up to 9% on corners and cards).
+   `config/africode.php`). The two headline figures are measured rather
+   than guessed — across a round of football-data.co.uk's own fixtures the
+   median overround is **9.1% on 1X2** and **7.9% on over/under 2.5**,
+   averaged over the ~10 books it samples. The niche markets are those
+   anchors widened, since books charge more on what they treat as a
+   sideshow.
+
+Those measurements come from European books; a typical African book runs
+wider. `ODDS_MARGIN_MULTIPLIER` (default 1.0) scales every margin at once
+— 1.2 to 1.4 is the usual range. Do not guess it: run
+
+```bash
+php artisan africode:check-pricing
+```
+
+which prices 1X2 and the 2.5 line **as though nothing published them**,
+compares against what the books actually offer, and reports the multiplier
+that would close the gap. It catches both halves of the problem at once —
+a margin set too low, and a model whose probabilities are off — and the
+error on the markets we can see is the best evidence available about the
+ones we cannot. Compare against a real slip from your own bookmaker before
+settling on a figure.
 
 Both numbers are kept — `odds` is the expected bookmaker price, `model_odds`
 the fair one — and the ticket shows the fair total underneath as a

@@ -195,6 +195,37 @@ class GeneratePredictionsTest extends TestCase
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::lastSuccessfulRun('GeneratePredictionsJob')->status);
     }
 
+    public function test_cards_are_only_predicted_where_referees_are_published(): void
+    {
+        // Same inputs, same referee, two leagues: the big five get a cards
+        // line, the Scottish Premiership does not. Everything else is
+        // unaffected.
+        $celtic = $this->team('Celtic');
+        $rangers = $this->team('Rangers');
+
+        $this->historyFixture($celtic, $rangers, '2025-08-16 15:00:00');
+        $this->profile($celtic);
+        $this->profile($rangers);
+
+        $fixture = $this->upcomingFixture($celtic, $rangers, Referee::create([
+            'name' => 'Willie Collum',
+            'matches_officiated' => 30,
+            'avg_yellows_per_match' => 4.6,
+            'avg_reds_per_match' => 0.2,
+            'avg_fouls_per_match' => 21.0,
+        ]));
+
+        GeneratePredictionsJob::dispatchSync();
+
+        $prediction = Prediction::champion()->where('fixture_id', $fixture->id)->firstOrFail();
+        $markets = PredictionMarket::where('prediction_id', $prediction->id)->pluck('market')->unique();
+
+        $this->assertNotContains('cards', $markets->all(), 'no referee data means no cards line');
+        $this->assertContains('goals', $markets->all(), 'the rest of the card is unaffected');
+        $this->assertContains('corners', $markets->all());
+        $this->assertNotSame('cards', $prediction->best_bet_market);
+    }
+
     public function test_challenger_trains_and_predicts_alongside_the_champion(): void
     {
         // Profiles + ≥300 finished fixtures give the softmax challenger a
