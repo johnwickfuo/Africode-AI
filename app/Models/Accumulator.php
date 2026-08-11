@@ -28,6 +28,7 @@ class Accumulator extends Model
         'max_leg_odds',
         'target_odds',
         'combined_odds',
+        'model_combined_odds',
         'combined_probability',
         'legs_count',
         'outcome',
@@ -40,6 +41,7 @@ class Accumulator extends Model
             'generated_at' => 'datetime',
             'settled_at' => 'datetime',
             'combined_odds' => 'float',
+            'model_combined_odds' => 'float',
             'combined_probability' => 'float',
             'max_leg_odds' => 'float',
         ];

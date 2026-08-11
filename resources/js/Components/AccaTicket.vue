@@ -45,6 +45,13 @@ const pct = (probability) => {
                     <p class="text-xs text-ink-500">
                         {{ legs.length }} legs · {{ pct(ticket.combined_probability) }} win chance
                     </p>
+                    <p
+                        v-if="ticket.model_combined_odds"
+                        class="text-xs text-ink-600"
+                        title="What the ticket would pay at the model's own fair prices, before any bookmaker margin"
+                    >
+                        {{ ticket.model_combined_odds.toFixed(2) }} at fair odds
+                    </p>
                     <p v-if="ticket.window" class="mt-0.5 text-xs font-semibold text-ink-400">
                         {{ ticket.window }}
                     </p>

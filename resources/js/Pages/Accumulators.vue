@@ -113,9 +113,12 @@ const capLabel = (row) => (row.max_leg_odds ? `${row.max_leg_odds.toFixed(2)} ·
         </section>
 
         <p class="mt-6 text-xs leading-relaxed text-ink-500">
-            Odds shown are the model's own fair odds (1 ÷ probability); bookmaker prices will
-            differ, and a real banker ticket will pay less than the total here once margin is
-            taken. Tickets carry at most {{ max_legs }} legs. Long accumulators are
+            Odds shown are what a mainstream bookmaker would be expected to pay, not the
+            model's own fair price. Match result and the 2.5-goals line use real published
+            prices; everything else — corners, cards, team goals, other goal lines — is
+            estimated from the model's probability and the going margin on that market, because
+            no free source prices them. Your bookmaker will still differ, so check the slip
+            before staking. Tickets carry at most {{ max_legs }} legs. Long accumulators are
             entertainment, not investment — a 10,000x ticket wins roughly once in ten thousand
             attempts by construction.
         </p>

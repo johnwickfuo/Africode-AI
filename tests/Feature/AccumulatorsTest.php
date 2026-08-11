@@ -31,6 +31,11 @@ class AccumulatorsTest extends TestCase
         // Most tests here are about the classic family; banker tickets get
         // their own cases and would otherwise drain the shared fixture pool.
         config(['africode.accas.banker.caps' => []]);
+
+        // These cases are about how legs are selected, not what they are
+        // priced at, so margin is switched off and a leg pays its fair odds.
+        // Pricing has its own tests below.
+        config(['africode.odds.margin' => ['default' => 0.0]]);
     }
 
     /**

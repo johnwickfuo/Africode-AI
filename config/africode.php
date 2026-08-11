@@ -72,6 +72,27 @@ return [
     'odds' => [
         // Minimum model-vs-market probability edge for a "value" flag.
         'value_edge_threshold' => (float) env('VALUE_EDGE_THRESHOLD', 0.05),
+
+        // What a mainstream book keeps on each market, as an overround on
+        // the fair price: a pick we rate at 80% (fair 1.25) is offered at
+        // 1/(0.80 x 1.08) = 1.16 on a market carrying 8%.
+        //
+        // Used only where nobody publishes a real price — 1X2 and the 2.5
+        // goals line come from football-data.co.uk instead. The going rate
+        // is tighter on the headline markets and wider on the ones books
+        // treat as a sideshow, which is most of what a ticket is built
+        // from. Raise these if slips keep coming back shorter than the
+        // site said; they are the single dial for that.
+        'margin' => [
+            'result' => 0.05,
+            'goals' => 0.06,
+            'btts' => 0.07,
+            'team_goals_home' => 0.08,
+            'team_goals_away' => 0.08,
+            'corners' => 0.09,
+            'cards' => 0.09,
+            'default' => 0.08,
+        ],
     ],
 
     // Prior profile for clubs with no history in the data (promoted sides).
@@ -139,6 +160,12 @@ return [
         // keeps trivial "over 0.5 goals" legs out (same ethos as Best Bets).
         'leg_min_prob' => 0.55,
         'leg_max_prob' => 0.92,
+
+        // And a floor on what a leg must actually pay. The probability
+        // ceiling above is in model terms; once margin is taken a 92% pick
+        // is offered at about 1.01, which is all of the risk for none of
+        // the return. Priced in bookmaker terms this is the honest limit.
+        'leg_min_odds' => 1.05,
 
         // Every ticket's legs must fall inside this many consecutive
         // calendar days (display timezone), so a ticket settles as one

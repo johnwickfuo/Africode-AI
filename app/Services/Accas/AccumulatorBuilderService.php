@@ -6,21 +6,27 @@ use App\Models\Accumulator;
 use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
 use App\Models\Prediction;
+use App\Services\Odds\MarketPricing;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Builds the daily accumulator set from the latest predictions, using model
- * fair odds (1/p), in two families:
+ * Builds the daily accumulator set from the latest predictions, in two
+ * families:
  *
  *  - classic: one ticket per target-odds tier (3x ... 10000x), legs of any
  *    price, so a handful of long legs can carry the total.
  *  - banker: the same targets reached only with short legs. Each cap is the
- *    most a single leg may pay (1.25 = an 80%+ call), which forces long
- *    tickets — 20x from 1.25 legs takes at least 14 of them — so leg counts
+ *    most a single leg may pay, which forces long tickets — so leg counts
  *    are capped and unreachable tiers are simply not offered.
+ *
+ * Legs are priced at what a bookmaker would pay (App\Services\Odds\
+ * MarketPricing), not at the model's fair 1/p, and targets are measured
+ * against those prices. Building to fair odds made every ticket land short
+ * on the slip, and worse the more legs it carried: at a 7% margin per
+ * selection a six-leg ticket returns about 65% of its stated total.
  *
  * Every ticket is confined to a short run of consecutive days (two by
  * default): a ticket whose legs span a fortnight cannot be settled, topped
@@ -39,22 +45,23 @@ use Illuminate\Support\Facades\Log;
  *  - Within a single acca, at most one leg per fixture (same-match legs are
  *    correlated, which would overstate the combined odds).
  *
- * Selection: fewest legs, then minimal overshoot. With fair odds every
- * combo landing exactly on the target has win probability 1/target, so
- * overshoot is the only thing worth minimizing — greedy-fill with the
+ * Selection: fewest legs, then minimal overshoot — greedy-fill with the
  * longest eligible legs, then swap the final leg for the shortest one that
- * still clears the target.
+ * still clears the target. Fewer legs is better at equal odds because each
+ * one hands the bookmaker another slice of margin.
  *
  * Tiers the remaining pool cannot reach are skipped (shown as unavailable)
  * rather than built with weakened rules.
  *
- * Generation is idempotent while a ticket is live: the job runs every
- * morning, but only definitions with no outstanding ticket are built. A
- * ticket therefore stands until its last match kicks off, which is what
- * makes it something anyone can actually act on.
+ * Generation is idempotent while a ticket is live: the job runs hourly, but
+ * only definitions with no outstanding ticket are built. A ticket therefore
+ * stands until it retires, which is what makes it something anyone can
+ * actually act on.
  */
 class AccumulatorBuilderService
 {
+    public function __construct(private MarketPricing $pricing) {}
+
     /** @var Collection<string, Accumulator> live tickets, keyed by definition */
     private Collection $live;
 
@@ -216,21 +223,24 @@ class AccumulatorBuilderService
         }
 
         DB::transaction(function () use ($legs, $target, $generatedAt, $family, $maxLegOdds) {
-            $combinedOdds = array_product(array_column($legs, 'odds'));
-
             $accumulator = Accumulator::create([
                 'generated_at' => $generatedAt,
                 'family' => $family,
                 'max_leg_odds' => $maxLegOdds,
                 'target_odds' => $target,
-                'combined_odds' => round($combinedOdds, 2),
-                'combined_probability' => round(1 / $combinedOdds, 8),
+                'combined_odds' => round(array_product(array_column($legs, 'odds')), 2),
+                'model_combined_odds' => round(array_product(array_column($legs, 'model_odds')), 2),
+                // From the probabilities, not from 1/combined_odds: the
+                // combined price now carries the bookmaker's margin, which
+                // is not part of the chance of the ticket landing.
+                'combined_probability' => round(array_product(array_column($legs, 'probability')), 8),
                 'legs_count' => count($legs),
             ]);
 
             foreach ($legs as $leg) {
                 AccumulatorLeg::create(['accumulator_id' => $accumulator->id] + collect($leg)->only([
-                    'prediction_market_id', 'fixture_id', 'market', 'line', 'direction', 'probability', 'odds',
+                    'prediction_market_id', 'fixture_id', 'market', 'line',
+                    'direction', 'probability', 'odds', 'model_odds',
                 ])->all());
             }
         });
@@ -289,6 +299,7 @@ class AccumulatorBuilderService
     {
         $minProb = (float) config('africode.accas.leg_min_prob');
         $maxProb = (float) config('africode.accas.leg_max_prob');
+        $minOdds = (float) config('africode.accas.leg_min_odds', 1.0);
         // A ticket is only useful if every leg can be placed, so legs come
         // from the same bettable-market list the Best Bet uses.
         $bettable = config('africode.markets.bettable');
@@ -302,11 +313,11 @@ class AccumulatorBuilderService
             // No limit() here: an eager-load limit applies to the whole
             // relation query, not per fixture. first() below picks the
             // newest prediction per fixture from the ordered collection.
-            ->with(['predictions' => fn ($query) => $query->champion()->orderByDesc('generated_at')])
+            ->with(['odds', 'predictions' => fn ($query) => $query->champion()->orderByDesc('generated_at')])
             ->get();
 
         return $fixtures
-            ->flatMap(function (Fixture $fixture) use ($minProb, $maxProb, $bettable, $minLine, $displayTz) {
+            ->flatMap(function (Fixture $fixture) use ($minProb, $maxProb, $minOdds, $bettable, $minLine, $displayTz) {
                 /** @var Prediction|null $prediction */
                 $prediction = $fixture->predictions->first();
                 if ($prediction === null) {
@@ -320,16 +331,34 @@ class AccumulatorBuilderService
                         fn ($q) => $q->whereNull('line')->orWhere('line', '>=', $minLine),
                     ))
                     ->get()
-                    ->map(fn ($market) => [
-                        'prediction_market_id' => $market->id,
-                        'fixture_id' => $fixture->id,
-                        'date' => $fixture->kickoff_utc->timezone($displayTz)->toDateString(),
-                        'market' => $market->market,
-                        'line' => $market->line !== null ? (float) $market->line : null,
-                        'direction' => $market->direction,
-                        'probability' => (float) $market->probability,
-                        'odds' => round(1 / (float) $market->probability, 3),
-                    ]);
+                    ->map(function ($market) use ($fixture, $displayTz) {
+                        // Priced at what a book would pay, not at 1/p: the
+                        // target a ticket is built to has to be the number
+                        // on the slip, or it lands short every time.
+                        $price = $this->pricing->price(
+                            $market->market,
+                            $market->line !== null ? (float) $market->line : null,
+                            $market->direction,
+                            (float) $market->probability,
+                            $fixture->odds,
+                        );
+
+                        return [
+                            'prediction_market_id' => $market->id,
+                            'fixture_id' => $fixture->id,
+                            'date' => $fixture->kickoff_utc->timezone($displayTz)->toDateString(),
+                            'market' => $market->market,
+                            'line' => $market->line !== null ? (float) $market->line : null,
+                            'direction' => $market->direction,
+                            'probability' => (float) $market->probability,
+                            'odds' => $price['odds'],
+                            'model_odds' => $price['model_odds'],
+                        ];
+                    })
+                    // A pick priced near evens-on pays almost nothing once
+                    // margin is taken, but still carries the whole risk of
+                    // going down. Not worth a slot on any ticket.
+                    ->filter(fn (array $leg) => $leg['odds'] >= $minOdds);
             })
             // Longest odds first; deterministic tie-breaks.
             ->sortBy([

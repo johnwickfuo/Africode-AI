@@ -57,7 +57,10 @@ class AccumulatorsController extends Controller
                 'blurb' => 'Big totals built only from short, high-probability legs — no single result carries the ticket, but it takes a lot of them.',
                 'groups' => collect($banker['caps'])->map(fn ($cap) => [
                     'label' => 'Max '.number_format((float) $cap, 2).' per leg',
-                    'hint' => 'Every leg is a '.round(100 / (float) $cap).'%+ call.',
+                    // Deliberately not "an 80%+ call": the cap is now on the
+                    // price a book would pay, which already carries margin,
+                    // so it maps to a lower probability than 1/cap.
+                    'hint' => 'Nothing on the ticket pays more than '.number_format((float) $cap, 2).'.',
                     'tickets' => $this->tickets(
                         $live, Accumulator::FAMILY_BANKER, (float) $cap, $banker['targets'],
                     ),

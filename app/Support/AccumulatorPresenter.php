@@ -26,6 +26,7 @@ class AccumulatorPresenter
             'started' => false,
             'window' => $accumulator->windowLabel(),
             'combined_odds' => $accumulator->combined_odds,
+            'model_combined_odds' => $accumulator->model_combined_odds,
             'combined_probability' => $accumulator->combined_probability,
             'outcome' => $accumulator->outcome,
             'legs' => $accumulator->legs->map(fn (AccumulatorLeg $leg) => [
@@ -41,6 +42,7 @@ class AccumulatorPresenter
                 'direction' => $leg->direction,
                 'probability' => $leg->probability,
                 'odds' => $leg->odds,
+                'model_odds' => $leg->model_odds,
             ])->values(),
         ];
     }

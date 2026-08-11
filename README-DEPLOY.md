@@ -280,6 +280,40 @@ Twenty-nine tickets in total. The short banker targets carry the same
 safe-leg idea at a stake most people would actually place: 3x out of 1.25
 legs is five picks, against twenty-four for 160x.
 
+### Odds: what the numbers on a ticket mean
+
+The model produces a probability; 1/p is its **fair** price, at which a bet
+is worth nothing to either side. No bookmaker offers that, so tickets used
+to be built and advertised at fair odds and every slip came back short —
+and worse the more legs it carried, since each leg hands over another
+slice of margin. Measured on a real card, a ticket advertised at fair odds
+returns roughly 60% of its stated total at six legs and under 20% at
+twenty-five.
+
+Legs are now priced at what a bookmaker would be expected to pay, and a
+ticket's target is measured against those prices, so a 3x ticket is
+intended to pay about 3x on the slip. Two sources, in order:
+
+1. **Real published prices** — football-data.co.uk's `fixtures.csv`, which
+   carries 1X2 and the 2.5-goals line for all twelve divisions, averaged
+   over the major books. That is the whole of what any free source
+   publishes; it has no corners, cards, team goals or other goal lines.
+2. **An estimate** for everything else: the fair price marked up by the
+   going overround for that market (`odds.margin` in
+   `config/africode.php`, 5% on 1X2 up to 9% on corners and cards).
+
+Both numbers are kept — `odds` is the expected bookmaker price, `model_odds`
+the fair one — and the ticket shows the fair total underneath as a
+reference. A ticket's **win chance stays the model's own probability**, not
+1/price: the margin is the bookmaker's cut, not part of the chance of the
+ticket landing, which is why the win chance is now visibly lower than
+1/odds.
+
+If slips keep coming back shorter than the site says, `odds.margin` is the
+dial — raise the figure for the markets that miss. `accas.leg_min_odds`
+(default 1.05) drops picks that pay almost nothing once margin is taken:
+all of the risk, none of the return.
+
 ### Settlement, and why a pick may end up void
 
 A result alone settles goals, BTTS and 1X2. Corners, cards and shots on

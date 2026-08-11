@@ -16,6 +16,7 @@ class AccumulatorLeg extends Model
         'direction',
         'probability',
         'odds',
+        'model_odds',
     ];
 
     protected function casts(): array
@@ -24,6 +25,7 @@ class AccumulatorLeg extends Model
             'line' => 'float',
             'probability' => 'float',
             'odds' => 'float',
+            'model_odds' => 'float',
         ];
     }
 
