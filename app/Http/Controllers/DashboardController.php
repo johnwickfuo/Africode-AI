@@ -79,8 +79,45 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'groups' => $groups,
+            'dates' => $this->dates($inWindow),
             'window_days' => FixtureSyncService::DAYS_AHEAD,
         ]);
+    }
+
+    /**
+     * The match days inside the window, for the date filter. Labelled here
+     * rather than in the browser so "Today" means today where the fixtures
+     * are listed, not wherever the visitor happens to be.
+     *
+     * @param  Collection<int, Fixture>  $fixtures
+     * @return list<array<string, mixed>>
+     */
+    private function dates(Collection $fixtures): array
+    {
+        $displayTz = config('africode.display_timezone');
+        $today = now($displayTz)->startOfDay();
+
+        return $fixtures
+            ->groupBy(fn (Fixture $fixture) => $fixture->kickoff_utc->timezone($displayTz)->toDateString())
+            ->map(function (Collection $onDay, string $key) use ($displayTz, $today) {
+                $date = $onDay->first()->kickoff_utc->timezone($displayTz)->startOfDay();
+                $daysAway = (int) $today->diffInDays($date, absolute: false);
+
+                return [
+                    'key' => $key,
+                    'label' => match ($daysAway) {
+                        0 => 'Today',
+                        1 => 'Tomorrow',
+                        default => $date->isoFormat('ddd D MMM'),
+                    },
+                    // Weekday alone is ambiguous past a week out.
+                    'sublabel' => $daysAway <= 1 ? $date->isoFormat('ddd D MMM') : null,
+                    'count' => $onDay->count(),
+                ];
+            })
+            ->sortKeys()
+            ->values()
+            ->all();
     }
 
     /**
@@ -119,6 +156,7 @@ class DashboardController extends Controller
             'home_team' => $fixture->homeTeam->only(['name', 'short_name', 'logo_url']),
             'away_team' => $fixture->awayTeam->only(['name', 'short_name', 'logo_url']),
             'kickoff_date' => $fixture->kickoff_utc->timezone($displayTz)->isoFormat('ddd D MMM'),
+            'date_key' => $fixture->kickoff_utc->timezone($displayTz)->toDateString(),
             'kickoff_time' => $fixture->kickoff_confirmed
                 ? $fixture->kickoff_utc->timezone($displayTz)->format('H:i')
                 : 'TBC',

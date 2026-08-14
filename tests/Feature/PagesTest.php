@@ -130,6 +130,51 @@ class PagesTest extends TestCase
             );
     }
 
+    public function test_dashboard_offers_a_date_filter_labelled_from_today(): void
+    {
+        $arsenal = $this->team('Arsenal');
+        $spurs = $this->team('Tottenham Hotspur');
+        $chelsea = $this->team('Chelsea');
+        $everton = $this->team('Everton');
+        $displayTz = config('africode.display_timezone');
+
+        // One match today, two tomorrow, one next week.
+        $days = [
+            [$arsenal, $spurs, now($displayTz)->setTime(18, 0)],
+            [$chelsea, $everton, now($displayTz)->addDay()->setTime(15, 0)],
+            [$spurs, $chelsea, now($displayTz)->addDay()->setTime(17, 30)],
+            [$everton, $arsenal, now($displayTz)->addDays(6)->setTime(15, 0)],
+        ];
+
+        foreach ($days as [$home, $away, $kickoff]) {
+            Fixture::create([
+                'league_id' => $home->league_id,
+                'season' => '2026-2027',
+                'home_team_id' => $home->id,
+                'away_team_id' => $away->id,
+                'kickoff_utc' => $kickoff->copy()->utc(),
+                'status' => Fixture::STATUS_SCHEDULED,
+            ]);
+        }
+
+        $this->get('/')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard', false)
+                ->count('dates', 3)
+                ->where('dates.0.label', 'Today')
+                ->where('dates.0.count', 1)
+                ->where('dates.1.label', 'Tomorrow')
+                ->where('dates.1.count', 2)
+                // Beyond tomorrow a weekday alone is ambiguous, so it gets
+                // the full date and no sublabel.
+                ->where('dates.2.label', now($displayTz)->addDays(6)->isoFormat('ddd D MMM'))
+                ->where('dates.2.sublabel', null)
+                // Every fixture carries the key the chips filter on.
+                ->where('groups.0.fixtures.0.date_key', now($displayTz)->toDateString())
+            );
+    }
+
     public function test_match_detail_shows_prediction_profiles_and_head_to_head(): void
     {
         [$fixture] = $this->upcomingFixtureWithPrediction();

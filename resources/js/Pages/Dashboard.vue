@@ -9,23 +9,31 @@ import TeamCrest from '../Components/TeamCrest.vue';
 
 const props = defineProps({
     groups: { type: Array, default: () => [] },
+    dates: { type: Array, default: () => [] },
     window_days: { type: Number, default: 14 },
 });
 
 const activeLeague = ref(null);
+const activeDate = ref(null);
 const valueOnly = ref(false);
+
+const matchesFilters = (fixture) =>
+    (!activeDate.value || fixture.date_key === activeDate.value)
+    && (!valueOnly.value || fixture.value);
 
 // Groups keep their server order (leagues in play first, then the ones
 // still waiting on their opener); filters only ever remove from it.
 const visibleGroups = computed(() =>
     props.groups
+        // A season preview is by definition outside the window the date
+        // chips cover, so picking a day hides it.
+        .filter((group) => !activeDate.value || !group.preview)
         .filter((group) => !activeLeague.value || group.league.code === activeLeague.value)
-        .map((group) => ({
-            ...group,
-            dates: byDate(
-                valueOnly.value ? group.fixtures.filter((fixture) => fixture.value) : group.fixtures,
-            ),
-        }))
+        .map((group) => {
+            const shown = group.fixtures.filter(matchesFilters);
+
+            return { ...group, shown: shown.length, dates: byDate(shown) };
+        })
         .filter((group) => group.dates.length),
 );
 
@@ -38,12 +46,17 @@ function byDate(fixtures) {
     return [...dates.entries()].map(([date, list]) => ({ date, fixtures: list }));
 }
 
-// Headline counts describe the fortnight only — season previews are extra.
+// The snapshot follows the filters, so the numbers always describe what is
+// on screen. Season previews are extra and never counted.
 const windowFixtures = computed(() =>
-    props.groups.filter((group) => !group.preview).flatMap((group) => group.fixtures),
+    visibleGroups.value
+        .filter((group) => !group.preview)
+        .flatMap((group) => group.dates.flatMap((day) => day.fixtures)),
 );
 const valueCount = computed(() => windowFixtures.value.filter((fixture) => fixture.value).length);
 const predictedCount = computed(() => windowFixtures.value.filter((f) => f.best_bet).length);
+
+const leagueCount = (group) => group.fixtures.filter(matchesFilters).length;
 
 const confidence = (probability) => {
     if (probability >= 0.78) return { label: 'High', class: 'bg-brand-500/15 text-brand-300' };
@@ -86,6 +99,36 @@ const startsIn = (days) => (days <= 1 ? 'Starts tomorrow' : `Starts in ${days} d
             </div>
         </div>
 
+        <!-- Date filter -->
+        <div v-if="dates.length" class="-mx-4 mb-3 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:px-0">
+            <nav class="flex w-max gap-2" aria-label="Match day">
+                <button
+                    type="button"
+                    class="chip"
+                    :class="activeDate === null ? 'chip-active' : 'chip-idle'"
+                    @click="activeDate = null"
+                >
+                    All dates
+                </button>
+                <button
+                    v-for="day in dates"
+                    :key="day.key"
+                    type="button"
+                    class="chip flex-col !items-start !gap-0 !py-1.5 leading-tight"
+                    :class="activeDate === day.key ? 'chip-active' : 'chip-idle'"
+                    @click="activeDate = activeDate === day.key ? null : day.key"
+                >
+                    <span class="flex items-center gap-1.5">
+                        {{ day.label }}
+                        <span class="text-xs opacity-60" data-nums>{{ day.count }}</span>
+                    </span>
+                    <span v-if="day.sublabel" class="text-[10px] font-medium opacity-60">
+                        {{ day.sublabel }}
+                    </span>
+                </button>
+            </nav>
+        </div>
+
         <!-- League filter -->
         <div class="-mx-4 mb-6 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:px-0">
             <nav class="flex w-max gap-2" aria-label="League filter">
@@ -107,7 +150,7 @@ const startsIn = (days) => (days <= 1 ? 'Starts tomorrow' : `Starts in ${days} d
                 >
                     {{ group.league.name }}
                     <span class="text-xs opacity-60" data-nums>
-                        {{ group.preview ? 'soon' : group.fixtures.length }}
+                        {{ group.preview ? 'soon' : leagueCount(group) }}
                     </span>
                 </button>
                 <button
@@ -141,17 +184,20 @@ const startsIn = (days) => (days <= 1 ? 'Starts tomorrow' : `Starts in ${days} d
                         {{ startsIn(group.starts_in_days) }}
                     </span>
                     <span v-else class="ml-auto shrink-0 font-mono text-xs text-ink-500" data-nums>
-                        {{ group.fixtures.length }}
+                        {{ group.shown }}
                     </span>
                 </div>
 
                 <p v-if="group.preview" class="mb-3 text-xs leading-relaxed text-ink-500">
-                    Season opener — the first {{ group.fixtures.length }} matches of the campaign.
+                    Season opener — the first {{ group.shown }} matches of the campaign.
                     Predictions publish once the models have this season's form.
                 </p>
 
                 <div v-for="dateGroup in group.dates" :key="dateGroup.date" class="mb-4 last:mb-0">
-                    <h3 class="mb-2 text-[11px] font-bold uppercase tracking-[.14em] text-ink-500">
+                    <h3
+                        v-if="!activeDate"
+                        class="mb-2 text-[11px] font-bold uppercase tracking-[.14em] text-ink-500"
+                    >
                         {{ dateGroup.date }}
                     </h3>
 
