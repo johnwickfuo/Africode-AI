@@ -2,6 +2,7 @@
 
 namespace App\Services\Predictions;
 
+use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
 use App\Models\MatchStat;
 use App\Models\Prediction;
@@ -395,8 +396,47 @@ class GeneratePredictionsService
     }
 
     /**
-     * @return array{predictions_created: int, market_rows: int, fixtures_skipped: int}
+     * @return array{predictions_created: int, superseded: int, market_rows: int, fixtures_skipped: int}
      */
+    /**
+     * Drops the predictions this run has just replaced.
+     *
+     * Every run used to insert another row per fixture and leave the old
+     * ones behind, so a fixture accumulated a prediction per run and only
+     * the newest was ever shown. Harmless until you look at the table and
+     * cannot tell which one the site is using.
+     *
+     * Two kinds are kept regardless: anything already scored, because the
+     * accuracy record is built from settled rows, and anything an
+     * accumulator leg points at — prediction_markets cascade on delete, so
+     * removing one would silently tear a leg out of a live ticket.
+     *
+     * @param  list<int>  $fixtureIds
+     */
+    private function supersede(array $fixtureIds, Carbon $generatedAt): int
+    {
+        if ($fixtureIds === []) {
+            return 0;
+        }
+
+        $candidates = Prediction::whereIn('fixture_id', $fixtureIds)
+            ->where('generated_at', '<', $generatedAt)
+            ->pluck('id');
+
+        if ($candidates->isEmpty()) {
+            return 0;
+        }
+
+        $keep = PredictionMarket::whereIn('prediction_id', $candidates)
+            ->where(fn ($query) => $query
+                ->where('outcome', '!=', PredictionMarket::OUTCOME_PENDING)
+                ->orWhereIn('id', AccumulatorLeg::query()->select('prediction_market_id')))
+            ->distinct()
+            ->pluck('prediction_id');
+
+        return Prediction::whereIn('id', $candidates->diff($keep))->delete();
+    }
+
     private function import(string $outputPath): array
     {
         $payload = json_decode((string) file_get_contents($outputPath), true, 512, JSON_THROW_ON_ERROR);
@@ -446,12 +486,18 @@ class GeneratePredictionsService
             }
         }
 
+        $superseded = $this->supersede(
+            collect($payload['predictions'] ?? [])->pluck('fixture_id')->all(),
+            $now,
+        );
+
         foreach ($payload['skipped'] ?? [] as $skipped) {
             Log::warning('Prediction generation: fixture skipped', $skipped);
         }
 
         return [
             'predictions_created' => $created,
+            'superseded' => $superseded,
             'market_rows' => $marketRows,
             'fixtures_skipped' => count($payload['skipped'] ?? []),
         ];

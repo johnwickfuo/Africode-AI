@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Jobs\GeneratePredictionsJob;
+use App\Models\Accumulator;
+use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
 use App\Models\MatchStat;
 use App\Models\PipelineRun;
@@ -241,6 +243,50 @@ class GeneratePredictionsTest extends TestCase
             round((float) $prediction->best_bet_probability, 4),
             'a likelier placeable pick was passed over',
         );
+    }
+
+    public function test_regenerating_replaces_the_previous_prediction(): void
+    {
+        $arsenal = $this->team('Arsenal');
+        $spurs = $this->team('Tottenham Hotspur');
+        $chelsea = $this->team('Chelsea');
+        $everton = $this->team('Everton');
+
+        $this->historyFixture($arsenal, $chelsea, '2025-08-16 15:00:00');
+        foreach ([$arsenal, $spurs, $chelsea, $everton] as $team) {
+            $this->profile($team);
+        }
+
+        $plain = $this->upcomingFixture($arsenal, $spurs);
+        $backed = $this->upcomingFixture($chelsea, $everton);
+
+        GeneratePredictionsJob::dispatchSync();
+
+        // A ticket takes a leg on the first run's pick for one fixture.
+        $held = Prediction::champion()->where('fixture_id', $backed->id)
+            ->firstOrFail()->markets()->firstOrFail();
+        $acca = Accumulator::create([
+            'generated_at' => now(), 'target_odds' => 3, 'combined_odds' => 3.1,
+            'combined_probability' => 0.32, 'legs_count' => 1,
+        ]);
+        AccumulatorLeg::create([
+            'accumulator_id' => $acca->id, 'prediction_market_id' => $held->id,
+            'fixture_id' => $backed->id, 'market' => $held->market, 'line' => $held->line,
+            'direction' => $held->direction, 'probability' => $held->probability, 'odds' => 1.6,
+        ]);
+
+        $this->travel(2)->minutes();
+        GeneratePredictionsJob::dispatchSync();
+
+        // The ordinary fixture keeps one prediction, not one per run.
+        $this->assertSame(1, Prediction::champion()->where('fixture_id', $plain->id)->count());
+
+        // The backed one keeps its old prediction too, because deleting it
+        // would cascade through prediction_markets and tear the leg out of
+        // a live ticket. The site still reads the newest.
+        $this->assertSame(2, Prediction::champion()->where('fixture_id', $backed->id)->count());
+        $this->assertNotNull($held->fresh(), 'a leg must never lose its pick');
+        $this->assertSame(1, $acca->fresh()->legs()->count());
     }
 
     public function test_cards_are_only_predicted_where_referees_are_published(): void
