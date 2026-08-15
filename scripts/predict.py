@@ -362,8 +362,89 @@ def btts_row(p_yes):
     }
 
 
-def selection_score(row, referee_known):
-    score = row["confidence_margin"]
+def neutral_fixture(fixture, league):
+    """The same fixture with both sides replaced by a league-average team.
+
+    Ranking picks by raw confidence always crowned the same handful of
+    near-certainties — an away side not scoring three, a match not
+    producing five goals — because those sit closest to the probability
+    ceiling in every match ever played. True, but not a prediction: it says
+    nothing about THESE teams, and pays about 1.10.
+
+    Evaluating an average match in the same league gives a base rate to
+    measure against, so what gets published is the pick where this fixture
+    departs most from the ordinary.
+    """
+    crosses = league.get("crosses_avg")
+    fouls = league.get("fouls_avg")
+    corners_mean = league.get("corners_total_mean")
+    cards_mean = league.get("cards_total_mean")
+
+    def side(source):
+        return {
+            "team_id": None,
+            "name": "average",
+            "matches_played": source.get("matches_played") or 0,
+            "attack_strength": 1.0,
+            "defence_strength": 1.0,
+            # Home advantage is a property of playing at home, not of the
+            # club, so the average match keeps it.
+            "home_advantage_factor": source.get("home_advantage_factor") or 1.0,
+            "xg_for_avg": None,
+            "xg_against_avg": None,
+            "corners_for_avg": corners_mean / 2 if corners_mean else None,
+            "corners_against_avg": corners_mean / 2 if corners_mean else None,
+            "crosses_avg": crosses,
+            "cards_avg": cards_mean / 2 if cards_mean else None,
+            "fouls_committed_avg": fouls / 2 if fouls else None,
+            "sot_for_avg": source.get("sot_for_avg"),
+            "sot_against_avg": source.get("sot_against_avg"),
+        }
+
+    return {
+        **fixture,
+        "is_derby": False,
+        # The league-average referee, not this match's.
+        "referee": None,
+        "home": side(fixture["home"]),
+        "away": side(fixture["away"]),
+    }
+
+
+def base_rates(fixture, league, config):
+    """Probability of each market/line going the SAME way in an average
+    match of this league. Keyed by (market, line, direction)."""
+    rows = []
+    for build in (goals_markets, corners_markets):
+        built = build(neutral_fixture(fixture, league), league)
+        if built:
+            rows += built
+
+    cards_leagues = config.get("cards_leagues")
+    if cards_leagues is None or fixture.get("league_code") in cards_leagues:
+        built, _ = cards_markets(neutral_fixture(fixture, league), league)
+        if built:
+            rows += built
+
+    rates = {}
+    for row in rows:
+        # Stored both ways so a pick is always comparable to its own side.
+        rates[(row["market"], row["line"], row["direction"])] = row["probability"]
+        opposite = {"over": "under", "under": "over", "yes": "no", "no": "yes"}.get(row["direction"])
+        if opposite:
+            rates[(row["market"], row["line"], opposite)] = 1 - row["probability"]
+    return rates
+
+
+def selection_score(row, referee_known, rates=None):
+    """How far this pick departs from an average match in the same league.
+
+    Falls back to raw confidence when there is no base rate to compare
+    against — a league with no history yet — which is the old behaviour.
+    """
+    base = (rates or {}).get((row["market"], row["line"], row["direction"]))
+    score = row["confidence_margin"] if base is None else row["probability"] - base
+
     if row["market"] == "cards" and not referee_known:
         score *= CARDS_UNKNOWN_REF_PENALTY
     return score
@@ -385,10 +466,26 @@ def is_bettable(row, config):
     if min_line is not None and row["line"] is not None and row["line"] < min_line:
         return False
 
+    # And it has to pay something. "Under 4.5 goals" is true nine times in
+    # ten and returns about 1.10 after margin — all of the risk of a bet
+    # with none of the point of one.
+    min_odds = config.get("min_headline_odds")
+    if min_odds is not None and estimated_odds(row, config) < min_odds:
+        return False
+
     return True
 
 
-def select_best_bet(rows, referee_known, config):
+def estimated_odds(row, config):
+    """What a book would pay, mirroring App\Services\Odds\MarketPricing."""
+    margins = config.get("margins") or {}
+    margin = margins.get(row["market"], margins.get("default", 0.09))
+    margin *= config.get("margin_multiplier", 1.0)
+
+    return (1 / row["probability"]) / (1 + margin)
+
+
+def select_best_bet(rows, referee_known, config, rates=None):
     min_prob = config.get("best_bet_min_prob", 0.62)
     max_prob = config.get("best_bet_max_prob", 0.92)
 
@@ -403,7 +500,7 @@ def select_best_bet(rows, referee_known, config):
     return max(
         candidates,
         key=lambda r: (
-            selection_score(r, referee_known),
+            selection_score(r, referee_known, rates),
             -r["probability"],  # deterministic tie-breaks
             r["market"],
             r["line"] if r["line"] is not None else -1,
@@ -574,7 +671,7 @@ def evaluate_fixture(fixture, league, config):
     if not rows:
         return None
 
-    best = select_best_bet(rows, referee_known, config)
+    best = select_best_bet(rows, referee_known, config, base_rates(fixture, league, config))
     return {
         "fixture_id": fixture["fixture_id"],
         "referee_known": referee_known,

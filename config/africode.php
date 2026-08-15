@@ -147,6 +147,12 @@ return [
         // Lines this low pay ~1.05 and read as filler even when available.
         'min_headline_line' => 1.5,
 
+        // And the same limit at the other end, in money rather than lines.
+        // "Under 4.5 goals" is true nine times in ten and pays about 1.10
+        // once margin is taken; headlining it is filler dressed up as a
+        // call. A Best Bet has to be worth placing.
+        'min_headline_odds' => 1.30,
+
         // Cards are only predicted where the inputs are good enough to
         // justify it. The model leans on the referee's own average, and
         // referee assignments are published for the big five and almost
@@ -182,7 +188,9 @@ return [
         // ceiling above is in model terms; once margin is taken a 92% pick
         // is offered at about 1.01, which is all of the risk for none of
         // the return. Priced in bookmaker terms this is the honest limit.
-        'leg_min_odds' => 1.05,
+        // Kept below the tightest banker cap (1.25), which needs short legs
+        // by design, but high enough to keep near-certainties from padding.
+        'leg_min_odds' => 1.10,
 
         // Every ticket's legs must fall inside this many consecutive
         // calendar days (display timezone), so a ticket settles as one

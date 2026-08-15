@@ -88,6 +88,11 @@ class GeneratePredictionsService
                 'bettable_markets' => config('africode.markets.bettable'),
                 'min_headline_line' => config('africode.markets.min_headline_line'),
                 'cards_leagues' => config('africode.markets.cards_leagues'),
+                'min_headline_odds' => config('africode.markets.min_headline_odds'),
+                // So the model can judge a pick on what it would pay, the
+                // same way App\Services\Odds\MarketPricing does.
+                'margins' => config('africode.odds.margin'),
+                'margin_multiplier' => config('africode.odds.margin_multiplier'),
             ],
             'league_averages' => $this->leagueAverages(),
             'training' => $this->challengerTrainingRows(),

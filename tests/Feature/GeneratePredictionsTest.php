@@ -195,6 +195,47 @@ class GeneratePredictionsTest extends TestCase
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::lastSuccessfulRun('GeneratePredictionsJob')->status);
     }
 
+    public function test_the_headline_is_the_unusual_call_not_the_safest_one(): void
+    {
+        // A heavy favourite at home. "Away team under 2.5 goals" is about
+        // 90% here — and about 90% in every match ever played, which is why
+        // ranking on certainty alone crowned it every time. It also pays
+        // roughly 1.01. The headline has to be something about THIS match.
+        $arsenal = $this->team('Arsenal');
+        $burnley = $this->team('Burnley');
+
+        foreach ([$this->team('Chelsea'), $this->team('Everton'), $this->team('Fulham')] as $i => $other) {
+            $this->historyFixture($arsenal, $other, '2025-08-'.(10 + $i).' 15:00:00');
+        }
+        $this->profile($arsenal, ['attack_strength' => 1.55, 'defence_strength' => 0.68]);
+        $this->profile($burnley, ['attack_strength' => 0.70, 'defence_strength' => 1.45]);
+
+        $fixture = $this->upcomingFixture($arsenal, $burnley);
+
+        GeneratePredictionsJob::dispatchSync();
+
+        $prediction = Prediction::champion()->where('fixture_id', $fixture->id)->firstOrFail();
+
+        $this->assertNotSame(
+            'team_goals_away',
+            $prediction->best_bet_market,
+            'the away side not scoring three is true of every match, not this one',
+        );
+
+        // And whatever it picked has to be worth placing: fair odds less the
+        // market's margin must clear the configured floor.
+        $margins = config('africode.odds.margin');
+        $margin = ($margins[$prediction->best_bet_market] ?? $margins['default'])
+            * config('africode.odds.margin_multiplier');
+        $pays = (1 / (float) $prediction->best_bet_probability) / (1 + $margin);
+
+        $this->assertGreaterThanOrEqual(
+            config('africode.markets.min_headline_odds'),
+            round($pays, 3),
+            "headline pays {$pays}, which is not a bet",
+        );
+    }
+
     public function test_cards_are_only_predicted_where_referees_are_published(): void
     {
         // Same inputs, same referee, two leagues: the big five get a cards
