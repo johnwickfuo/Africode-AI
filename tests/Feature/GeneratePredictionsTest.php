@@ -195,12 +195,13 @@ class GeneratePredictionsTest extends TestCase
         $this->assertSame(PipelineRun::STATUS_SUCCESS, PipelineRun::lastSuccessfulRun('GeneratePredictionsJob')->status);
     }
 
-    public function test_the_headline_is_the_unusual_call_not_the_safest_one(): void
+    public function test_the_headline_is_the_most_likely_call_that_is_worth_placing(): void
     {
-        // A heavy favourite at home. "Away team under 2.5 goals" is about
-        // 90% here — and about 90% in every match ever played, which is why
-        // ranking on certainty alone crowned it every time. It also pays
-        // roughly 1.01. The headline has to be something about THIS match.
+        // The Best Bet is the model's most confident call. Left at that
+        // alone it always landed on a near-certainty — "away team under 2.5
+        // goals" is true about nine times in ten in ANY match and pays
+        // about 1.01 — so the pick has to clear a price floor first. What
+        // is left is the most likely call anyone would actually place.
         $arsenal = $this->team('Arsenal');
         $burnley = $this->team('Burnley');
 
@@ -216,23 +217,29 @@ class GeneratePredictionsTest extends TestCase
 
         $prediction = Prediction::champion()->where('fixture_id', $fixture->id)->firstOrFail();
 
-        $this->assertNotSame(
-            'team_goals_away',
-            $prediction->best_bet_market,
-            'the away side not scoring three is true of every match, not this one',
-        );
-
-        // And whatever it picked has to be worth placing: fair odds less the
-        // market's margin must clear the configured floor.
         $margins = config('africode.odds.margin');
-        $margin = ($margins[$prediction->best_bet_market] ?? $margins['default'])
+        $margin = fn (string $market) => ($margins[$market] ?? $margins['default'])
             * config('africode.odds.margin_multiplier');
-        $pays = (1 / (float) $prediction->best_bet_probability) / (1 + $margin);
+        $pays = fn (PredictionMarket $row) => (1 / (float) $row->probability) / (1 + $margin($row->market));
 
+        // Worth placing.
         $this->assertGreaterThanOrEqual(
             config('africode.markets.min_headline_odds'),
-            round($pays, 3),
-            "headline pays {$pays}, which is not a bet",
+            round((1 / (float) $prediction->best_bet_probability) / (1 + $margin($prediction->best_bet_market)), 3),
+            'the headline pays too little to be a bet',
+        );
+
+        // And the most likely of everything that clears that bar.
+        $eligible = PredictionMarket::where('prediction_id', $prediction->id)->get()
+            ->filter(fn (PredictionMarket $row) => in_array($row->market, config('africode.markets.bettable'), true)
+                && ($row->line === null || (float) $row->line >= config('africode.markets.min_headline_line'))
+                && round($pays($row), 3) >= config('africode.markets.min_headline_odds')
+                && (float) $row->probability <= config('africode.best_bet.max_prob'));
+
+        $this->assertSame(
+            round((float) $eligible->max('probability'), 4),
+            round((float) $prediction->best_bet_probability, 4),
+            'a likelier placeable pick was passed over',
         );
     }
 
