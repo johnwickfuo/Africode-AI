@@ -86,11 +86,15 @@ class RecomputeProfilesService
                     return $row;
                 });
 
-                $leagueAvg = $this->leagueWindowAverage(
-                    $leagueBlendTotals,
-                    $window->first()['league_id'],
-                    $season,
-                );
+                // The division this season was played in. Taken from the
+                // season's own rows, not the window's: the window reaches
+                // back a season, and for a promoted or relegated club that
+                // is a different league entirely — benchmarking against it
+                // is what makes a Championship winner read like a Premier
+                // League contender.
+                $leagueId = $teamRows->where('season', $season)->last()['league_id'];
+
+                $leagueAvg = $this->leagueWindowAverage($leagueBlendTotals, $leagueId, $season);
 
                 $attackBlend = $this->weightedAverage($window, 'blend_for');
                 $defenceBlend = $this->weightedAverage($window, 'blend_against');
@@ -98,6 +102,7 @@ class RecomputeProfilesService
                 TeamProfile::updateOrCreate(
                     ['team_id' => $teamId, 'season' => $season],
                     [
+                        'league_id' => $leagueId,
                         'matches_played' => $teamRows->where('season', $season)->count(),
                         'attack_strength' => $this->ratio($attackBlend, $leagueAvg),
                         'defence_strength' => $this->ratio($defenceBlend, $leagueAvg),

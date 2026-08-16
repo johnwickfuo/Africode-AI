@@ -4,6 +4,7 @@ namespace App\Services\Predictions;
 
 use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
+use App\Models\League;
 use App\Models\MatchStat;
 use App\Models\Prediction;
 use App\Models\PredictionMarket;
@@ -119,32 +120,75 @@ class GeneratePredictionsService
         ];
     }
 
+    /**
+     * The profile fields that do not travel between divisions, and the
+     * power the division ratio is raised to for each: positive where a
+     * stronger league suppresses the number, negative where it inflates it.
+     *
+     * Goals, xG and the strengths built from them move with the ratio in
+     * full. Corners and shots on target are counts of territory rather than
+     * quality and compress between divisions instead of scaling with them,
+     * so they take the square root. Cards, fouls, crosses and the home
+     * advantage factor are traits of how a club plays, not of who it plays,
+     * and carry over untouched.
+     */
+    private const DIVISION_EXPONENTS = [
+        'attack_strength' => 1.0,
+        'defence_strength' => -1.0,
+        'xg_for_avg' => 1.0,
+        'xg_against_avg' => -1.0,
+        'corners_for_avg' => 0.5,
+        'corners_against_avg' => -0.5,
+        'sot_for_avg' => 0.5,
+        'sot_against_avg' => -0.5,
+    ];
+
+    /** @var array<int, string>|null */
+    private ?array $leagueCodes = null;
+
     private function teamPayload(Fixture $fixture, int $teamId, string $name): array
     {
         $profile = TeamProfile::where('team_id', $teamId)->where('season', $fixture->season)->first()
             ?? TeamProfile::where('team_id', $teamId)->orderByDesc('season')->first();
 
+        // Strengths are ratios against the league average, so a profile
+        // earned in another division says nothing about this one until it
+        // is put on this division's scale. Too far apart to translate and
+        // the profile is dropped: the prior below is the better guess.
+        $ratio = $this->divisionRatio($profile, $fixture);
+        if ($ratio === null) {
+            $profile = null;
+            $ratio = 1.0;
+        }
+
         $prior = config('africode.priors.promoted');
 
         // A club with no profile history at all is a promoted side: without
-        // a prior it would be skipped until several matchdays in. Clubs
-        // whose only history is this season blend observation with the
-        // prior while matches are few; established clubs (any earlier
-        // season on record) are untouched — their own past is the better
-        // prior and the profile recompute already uses it.
+        // a prior it would be skipped until several matchdays in. So is one
+        // whose only rows in THIS division are this season's — a promoted
+        // club three matchdays in has a profile, but three matches of it,
+        // and judging it on that alone is how a good start reads as a title
+        // charge. Both blend observation with the prior while matches are
+        // few. Clubs with a season of this division behind them are
+        // untouched: their own past is the better prior, and the profile
+        // recompute already uses it.
         $isNewcomer = $profile === null
-            || ($profile->season === $fixture->season
-                && TeamProfile::where('team_id', $teamId)->where('season', '<', $fixture->season)->doesntExist());
+            || ($profile->season === $fixture->season && ! $this->hasHistoryIn($fixture, $teamId));
 
-        $matches = $profile?->matches_played ?? 0;
+        $matches = $profile?->season === $fixture->season ? ($profile->matches_played ?? 0) : 0;
         $weight = $isNewcomer
             ? $matches / ($matches + (int) config('africode.priors.blend_matches'))
             : 1.0;
 
-        $value = function (string $key) use ($profile, $prior, $isNewcomer, $weight) {
+        $value = function (string $key) use ($profile, $prior, $isNewcomer, $weight, $ratio) {
             $observed = $profile?->{$key};
+
+            if ($observed !== null && $ratio !== 1.0 && isset(self::DIVISION_EXPONENTS[$key])) {
+                $observed = (float) $observed * $ratio ** self::DIVISION_EXPONENTS[$key];
+            }
+
             if (! $isNewcomer) {
-                return $observed;
+                return $observed === null ? null : round((float) $observed, 4);
             }
             if ($observed === null) {
                 return $prior[$key];
@@ -170,6 +214,45 @@ class GeneratePredictionsService
             'sot_for_avg' => $value('sot_for_avg'),
             'sot_against_avg' => $value('sot_against_avg'),
         ];
+    }
+
+    /**
+     * Whether the club has a completed season in the fixture's own division.
+     */
+    private function hasHistoryIn(Fixture $fixture, int $teamId): bool
+    {
+        return TeamProfile::where('team_id', $teamId)
+            ->where('season', '<', $fixture->season)
+            ->where('league_id', $fixture->league_id)
+            ->exists();
+    }
+
+    /**
+     * What to multiply a profile by to put it on the fixture division's
+     * scale: below 1 for a club moving up, above 1 for one moving down.
+     * 1.0 when no translation is needed, null when the two divisions are
+     * too far apart for the translation to mean anything.
+     */
+    private function divisionRatio(?TeamProfile $profile, Fixture $fixture): ?float
+    {
+        if ($profile === null || $profile->league_id === null || $profile->league_id === $fixture->league_id) {
+            return 1.0;
+        }
+
+        $this->leagueCodes ??= League::pluck('code', 'id')->all();
+
+        $strengths = config('africode.divisions.strength');
+        $from = $strengths[$this->leagueCodes[$profile->league_id] ?? ''] ?? null;
+        $to = $strengths[$fixture->league->code] ?? null;
+
+        if ($from === null || $to === null || $to <= 0) {
+            return null;
+        }
+
+        $ratio = $from / $to;
+        $gap = (float) config('africode.divisions.max_ratio_gap');
+
+        return ($ratio < $gap || $ratio > 1 / $gap) ? null : $ratio;
     }
 
     /**

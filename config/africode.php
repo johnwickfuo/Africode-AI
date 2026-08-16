@@ -128,6 +128,49 @@ return [
         ],
     ],
 
+    // How hard each division is to play in, on a scale where the Premier
+    // League is 1.00. Used only when a club's newest profile was measured
+    // in a different league from the fixture being predicted — a promoted
+    // or relegated side, before it has played a match in its new division.
+    //
+    // Attack and defence strengths are ratios against the league average,
+    // so they do not travel: a club that outscored the Championship by 35%
+    // arrives in the Premier League still rated like a title contender,
+    // which is exactly how the model came to tip Coventry over Arsenal.
+    // Moving up, a team's output falls and what it concedes rises, both by
+    // the ratio between the two divisions.
+    //
+    // The Championship figure is not a guess. Take the club that gets
+    // promoted — roughly the division's best, attack around 1.30 and
+    // defence around 0.75 — and the ratio that lands it on the promoted
+    // prior below (0.85 attack, 1.15 defence) is 0.65, and it lands on both
+    // numbers at once. The rest are stepped from there and from the usual
+    // continental ordering; they matter far less, because a club only ever
+    // changes league by promotion or relegation inside its own country, and
+    // England is the only country here with more than one division tracked.
+    'divisions' => [
+        'strength' => [
+            'PL' => 1.00,
+            'PD' => 0.97,
+            'SA' => 0.96,
+            'BL1' => 0.95,
+            'FL1' => 0.92,
+            'DED' => 0.72,
+            'PPL' => 0.72,
+            'TSL' => 0.70,
+            'SPL' => 0.66,
+            'ELC' => 0.65,
+            'EL1' => 0.52,
+            'EL2' => 0.44,
+        ],
+        // Beyond this the transfer is guesswork, so a profile from a
+        // division this much weaker (or stronger) is thrown away and the
+        // club is treated as having no history at all — the promoted prior
+        // takes over. Two tiers apart is already outside anything promotion
+        // and relegation can produce in one summer.
+        'max_ratio_gap' => 0.45,
+    ],
+
     // A pick is only worth headlining if a punter can actually place it.
     // Mainstream books (SportyBet, Bet9ja, 1xBet, MSport) reliably price
     // match result, goals, BTTS, corners, cards and team goals; shots on

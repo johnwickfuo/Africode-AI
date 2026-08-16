@@ -9,6 +9,7 @@ class TeamProfile extends Model
 {
     protected $fillable = [
         'team_id',
+        'league_id',
         'season',
         'matches_played',
         'attack_strength',
@@ -48,5 +49,14 @@ class TeamProfile extends Model
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /**
+     * The division the row was measured in. Attack and defence strengths are
+     * relative to this league's average, so they only compare like for like.
+     */
+    public function league(): BelongsTo
+    {
+        return $this->belongsTo(League::class);
     }
 }

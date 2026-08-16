@@ -6,6 +6,7 @@ use App\Jobs\GeneratePredictionsJob;
 use App\Models\Accumulator;
 use App\Models\AccumulatorLeg;
 use App\Models\Fixture;
+use App\Models\League;
 use App\Models\MatchStat;
 use App\Models\PipelineRun;
 use App\Models\Prediction;
@@ -385,6 +386,102 @@ class GeneratePredictionsTest extends TestCase
         $this->assertNotNull($result);
         // Prior says promoted sides are weak: home favourite expected.
         $this->assertSame('home', $result->direction);
+    }
+
+    public function test_promoted_team_is_rescaled_out_of_the_division_it_came_from(): void
+    {
+        // Arsenal at home to a Coventry side that has just come up. Both
+        // carry a profile from last season, but Coventry's was earned in the
+        // Championship: "35% better than average" there is not what it means
+        // in the Premier League, and taking it at face value used to make
+        // Arsenal a fair bet to be held under 1.5 goals at home.
+        $arsenal = $this->team('Arsenal');
+        $coventry = $this->team('Coventry City');
+        $premierLeague = League::where('code', 'PL')->firstOrFail();
+        $championship = League::where('code', 'ELC')->firstOrFail();
+
+        $this->historyFixture($arsenal, $this->team('Chelsea'), '2025-08-16 15:00:00');
+        $this->historyFixture($this->team('Fulham'), $this->team('Everton'), '2025-08-23 15:00:00');
+        $this->historyFixture($this->team('Burnley'), $this->team('Brentford'), '2025-08-30 15:00:00');
+
+        $this->profile($arsenal, [
+            'league_id' => $premierLeague->id,
+            'attack_strength' => 1.35,
+            'defence_strength' => 0.75,
+        ]);
+        // Champions of the division below: strong numbers, wrong yardstick.
+        $this->profile($coventry, [
+            'league_id' => $championship->id,
+            'attack_strength' => 1.30,
+            'defence_strength' => 0.75,
+        ]);
+
+        $fixture = Fixture::create([
+            'league_id' => $premierLeague->id,
+            'season' => '2026-2027',
+            'matchday' => 1,
+            'home_team_id' => $arsenal->id,
+            'away_team_id' => $coventry->id,
+            'kickoff_utc' => now('UTC')->addDays(3),
+            'status' => Fixture::STATUS_SCHEDULED,
+        ]);
+
+        GeneratePredictionsJob::dispatchSync();
+
+        // Championship 0.65 / Premier League 1.00: attack scales down by the
+        // ratio, defence up by its inverse.
+        $exported = json_decode(file_get_contents(config('africode.predict.input_path')), true);
+        $away = collect($exported['fixtures'])->firstWhere('fixture_id', $fixture->id)['away'];
+        $this->assertEqualsWithDelta(0.845, $away['attack_strength'], 0.001);
+        $this->assertEqualsWithDelta(1.1538, $away['defence_strength'], 0.001);
+        // Nothing has been played in this division yet, so the count resets.
+        $this->assertSame(0, $away['matches_played']);
+
+        $prediction = Prediction::champion()->where('fixture_id', $fixture->id)->firstOrFail();
+        $markets = PredictionMarket::where('prediction_id', $prediction->id)->get();
+
+        $this->assertSame('home', $markets->firstWhere('market', 'result')->direction);
+        $this->assertSame(
+            'over',
+            $markets->first(fn (PredictionMarket $row) => $row->market === 'team_goals_home' && (float) $row->line === 1.5)
+                ->direction,
+            'the strongest side in the league, at home to a promoted one, is not an under 1.5 goals bet',
+        );
+    }
+
+    public function test_promoted_team_blends_its_first_matches_with_the_prior(): void
+    {
+        // Three good matchdays into its first top-flight season, a promoted
+        // club has a profile in the right division — but three matches of
+        // it. Until the sample is worth something the prior pulls it back.
+        $arsenal = $this->team('Arsenal');
+        $coventry = $this->team('Coventry City');
+        $premierLeague = League::where('code', 'PL')->firstOrFail();
+
+        $this->historyFixture($arsenal, $this->team('Chelsea'), '2025-08-16 15:00:00');
+
+        $this->profile($coventry, [
+            'league_id' => $premierLeague->id,
+            'season' => '2026-2027',
+            'matches_played' => 3,
+            'attack_strength' => 1.40,
+        ]);
+
+        Fixture::create([
+            'league_id' => $premierLeague->id,
+            'season' => '2026-2027',
+            'home_team_id' => $arsenal->id,
+            'away_team_id' => $coventry->id,
+            'kickoff_utc' => now('UTC')->addDays(3),
+            'status' => Fixture::STATUS_SCHEDULED,
+        ]);
+
+        GeneratePredictionsJob::dispatchSync();
+
+        // weight = 3 / (3 + 6): a third of the hot start, two thirds prior.
+        $exported = json_decode(file_get_contents(config('africode.predict.input_path')), true);
+        $away = $exported['fixtures'][0]['away'];
+        $this->assertEqualsWithDelta((1.40 / 3) + (0.85 * 2 / 3), $away['attack_strength'], 0.001);
     }
 
     public function test_fixture_without_any_profiles_is_predicted_from_priors(): void
