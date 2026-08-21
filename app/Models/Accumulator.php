@@ -53,32 +53,50 @@ class Accumulator extends Model
     }
 
     /**
-     * Tickets worth putting in front of anyone: fewer than
-     * `accas.retire_at_started_share` of their legs have kicked off.
+     * Tickets worth putting in front of anyone: still unscored, still whole,
+     * and with fewer than `accas.retire_at_started_share` of their legs
+     * kicked off.
      *
      * A ticket is not much use once a chunk of it is already running — the
      * price has moved and nobody can back it whole — so it retires well
      * before its last match rather than sitting on the shelf all weekend.
+     *
+     * "Still whole" is not paranoia. Legs cascade away with the fixture or
+     * the prediction market behind them, and a merge or a purge of
+     * mislabelled fixtures takes rows with it. What is left is a ticket
+     * whose surviving legs have not kicked off — nothing to retire it, an
+     * outcome that can never be decided, and a definition key blocked
+     * forever, so no replacement is ever built for that tier again.
      */
     public function scopeLive(Builder $query): Builder
     {
-        return $query->whereRaw('('.self::STARTED_LEGS_SQL.') < accumulators.legs_count * ?', [
-            now('UTC'), self::retireShare(),
-        ]);
+        return $query
+            ->where('outcome', self::OUTCOME_PENDING)
+            ->whereRaw('('.self::LEGS_SQL.') = accumulators.legs_count')
+            ->whereRaw('('.self::STARTED_LEGS_SQL.') < accumulators.legs_count * ?', [
+                now('UTC'), self::retireShare(),
+            ]);
     }
 
     /** The mirror of live(): retired, whether or not it has been scored. */
     public function scopeStarted(Builder $query): Builder
     {
-        return $query->whereRaw('('.self::STARTED_LEGS_SQL.') >= accumulators.legs_count * ?', [
-            now('UTC'), self::retireShare(),
-        ]);
+        return $query->where(fn (Builder $retired) => $retired
+            ->where('outcome', '!=', self::OUTCOME_PENDING)
+            ->orWhereRaw('('.self::LEGS_SQL.') != accumulators.legs_count')
+            ->orWhereRaw('('.self::STARTED_LEGS_SQL.') >= accumulators.legs_count * ?', [
+                now('UTC'), self::retireShare(),
+            ]));
     }
 
     /** In-memory counterpart of live(). Requires legs.fixture to be loaded. */
     public function isLive(): bool
     {
-        if ($this->legs->isEmpty()) {
+        if ($this->legs->isEmpty() || $this->legs->count() !== (int) $this->legs_count) {
+            return false;
+        }
+
+        if ($this->outcome !== self::OUTCOME_PENDING) {
             return false;
         }
 
@@ -87,10 +105,22 @@ class Accumulator extends Model
         return $started < $this->legs->count() * self::retireShare();
     }
 
+    /** Whether every leg this ticket was published with still exists. */
+    public function isIntact(): bool
+    {
+        return $this->legs->count() === (int) $this->legs_count;
+    }
+
     private static function retireShare(): float
     {
         return (float) config('africode.accas.retire_at_started_share', 0.30);
     }
+
+    /** Legs of the accumulator in the outer query that still exist. */
+    private const LEGS_SQL = <<<'SQL'
+        select count(*) from accumulator_legs
+        where accumulator_legs.accumulator_id = accumulators.id
+        SQL;
 
     /** Legs of the accumulator in the outer query whose match has kicked off. */
     private const STARTED_LEGS_SQL = <<<'SQL'

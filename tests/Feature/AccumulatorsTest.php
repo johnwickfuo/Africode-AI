@@ -657,6 +657,66 @@ class AccumulatorsTest extends TestCase
         $this->assertSame(1, Accumulator::live()->count());
     }
 
+    public function test_a_ticket_that_loses_a_leg_stops_blocking_its_tier(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->manyPredictedFixtures(3, ['goals|2.5|over' => 0.55]);
+        app(AccumulatorBuilderService::class)->run();
+
+        $original = Accumulator::with('legs')->firstOrFail();
+        $this->assertSame(1, Accumulator::live()->count());
+
+        // A duplicate club is merged away, or a mislabelled fixture purged:
+        // the leg cascades with it and the ticket is left with fewer legs
+        // than it was published with. Nothing remaining has kicked off, so
+        // it can never retire on its own — and while it counted as live it
+        // held its tier shut for good.
+        Fixture::whereIn('id', $original->legs->take(1)->pluck('fixture_id'))->delete();
+
+        $this->assertSame(0, Accumulator::live()->count(), 'a ticket missing a leg is not live');
+        $this->assertSame(1, Accumulator::started()->count(), 'and it counts as retired');
+
+        $this->manyPredictedFixtures(3, ['goals|2.5|over' => 0.55], teamOffset: 3);
+        $summary = app(AccumulatorBuilderService::class)->run();
+
+        $this->assertSame([3], $summary['built'], 'the tier builds again');
+        $this->assertNotSame($original->id, Accumulator::live()->firstOrFail()->id);
+    }
+
+    public function test_a_ticket_that_loses_a_leg_is_voided_rather_than_left_awaiting(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->manyPredictedFixtures(3, ['goals|2.5|over' => 0.55]);
+        app(AccumulatorBuilderService::class)->run();
+
+        $acca = Accumulator::with('legs')->firstOrFail();
+        Fixture::whereIn('id', $acca->legs->take(1)->pluck('fixture_id'))->delete();
+
+        app(SettlePredictionsService::class)->run();
+
+        // Unscoreable as published, so it is voided the way a bookmaker
+        // voids a bet whose market disappears — not left pending forever.
+        $this->assertSame(Accumulator::OUTCOME_VOID, $acca->fresh()->outcome);
+    }
+
+    public function test_a_settled_ticket_never_counts_as_live(): void
+    {
+        config(['africode.accas.tiers' => [3]]);
+
+        $this->manyPredictedFixtures(3, ['goals|2.5|over' => 0.55]);
+        app(AccumulatorBuilderService::class)->run();
+
+        Accumulator::query()->update([
+            'outcome' => Accumulator::OUTCOME_LOST,
+            'settled_at' => now(),
+        ]);
+
+        $this->assertSame(0, Accumulator::live()->count());
+        $this->assertSame(1, Accumulator::started()->count());
+    }
+
     public function test_dedupe_command_collapses_tickets_published_more_than_once(): void
     {
         config(['africode.accas.tiers' => [3]]);

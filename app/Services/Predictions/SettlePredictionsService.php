@@ -110,9 +110,19 @@ class SettlePredictionsService
             ->get();
 
         foreach ($pending as $accumulator) {
-            $outcomes = $accumulator->legs->map(fn ($leg) => $leg->predictionMarket->outcome);
+            // A leg goes with the fixture or the prediction market behind
+            // it, and both get deleted from time to time — a duplicate club
+            // merged away, a mislabelled fixture purged. The ticket that is
+            // left is not the one that was published and can never be
+            // scored honestly, so it is voided, exactly as a bookmaker
+            // voids a bet whose market disappears. Left pending it would
+            // hang on "awaiting result" for good.
+            $outcomes = $accumulator->legs
+                ->map(fn ($leg) => $leg->predictionMarket?->outcome)
+                ->filter();
 
             $result = match (true) {
+                ! $accumulator->isIntact() => Accumulator::OUTCOME_VOID,
                 $outcomes->contains(PredictionMarket::OUTCOME_LOST) => Accumulator::OUTCOME_LOST,
                 $outcomes->contains(PredictionMarket::OUTCOME_PENDING) => null,
                 $outcomes->contains(PredictionMarket::OUTCOME_WON) => Accumulator::OUTCOME_WON,
